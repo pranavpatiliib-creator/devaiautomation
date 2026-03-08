@@ -3,7 +3,7 @@ const API_BASE_URL =
     (window.location.hostname === "localhost" ||
         window.location.hostname === "127.0.0.1")
         ? "http://localhost:5000"
-        : "https://devai-backend.onrender.com";
+        : "https://devaiautomation.onrender.comm";
 
 
 
@@ -32,13 +32,18 @@ async function submitLeadDashboard() {
 
         });
 
+        if (!res.ok) {
+            throw new Error(`Server error: ${res.status}`);
+        }
+
         const data = await res.json();
 
         alert("Lead submitted!");
 
     } catch (err) {
 
-        alert("Server error");
+        console.error("Submit lead error:", err);
+        alert("Error: " + err.message);
 
     }
 
@@ -60,40 +65,45 @@ async function signup() {
     const services = document.getElementById("services").value;
     const website = document.getElementById("website").value;
 
-    const res = await fetch(`${API_BASE_URL}/signup`, {
+    try {
+        const res = await fetch(`${API_BASE_URL}/signup`, {
 
-        method: "POST",
+            method: "POST",
 
-        headers: {
-            "Content-Type": "application/json"
-        },
+            headers: {
+                "Content-Type": "application/json"
+            },
 
-        body: JSON.stringify({
-            name,
-            email,
-            password,
-            profession,
-            businessName,
-            businessPhone,
-            location,
-            services,
-            website
-        })
+            body: JSON.stringify({
+                name,
+                email,
+                password,
+                profession,
+                businessName,
+                businessPhone,
+                location,
+                services,
+                website
+            })
 
-    });
+        });
 
-    const data = await res.json();
+        const data = await res.json();
 
-    if (data.error) {
+        if (data.error) {
 
-        alert(data.error);
+            alert(data.error);
 
-    } else {
+        } else {
 
-        alert("Account created successfully");
+            alert("Account created successfully");
 
-        window.location = "login.html";
+            window.location = "login.html";
 
+        }
+    } catch (err) {
+        console.error("Signup error:", err);
+        alert("Error connecting to server. Please check your connection.");
     }
 
 }
@@ -107,33 +117,38 @@ async function login() {
     const email = document.getElementById("email").value;
     const password = document.getElementById("password").value;
 
-    const res = await fetch(`${API_BASE_URL}/login`, {
+    try {
+        const res = await fetch(`${API_BASE_URL}/login`, {
 
-        method: "POST",
+            method: "POST",
 
-        headers: {
-            "Content-Type": "application/json"
-        },
+            headers: {
+                "Content-Type": "application/json"
+            },
 
-        body: JSON.stringify({
-            email,
-            password
-        })
+            body: JSON.stringify({
+                email,
+                password
+            })
 
-    });
+        });
 
-    const data = await res.json();
+        const data = await res.json();
 
-    if (data.error) {
-        alert(data.error);
-        return;
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+
+        localStorage.setItem("token", data.token);
+
+        alert("Login successful");
+
+        window.location = "dashboard.html";
+    } catch (err) {
+        console.error("Login error:", err);
+        alert("Error connecting to server. Please check your connection.");
     }
-
-    localStorage.setItem("token", data.token);
-
-    alert("Login successful");
-
-    window.location = "dashboard.html";
 
 }
 
@@ -145,37 +160,42 @@ async function loadLeads() {
 
     const token = localStorage.getItem("token");
 
-    const res = await fetch(`${API_BASE_URL}/leads`, {
-        headers: {
-            Authorization: token
-        }
-    });
+    try {
+        const res = await fetch(`${API_BASE_URL}/leads`, {
+            headers: {
+                Authorization: token
+            }
+        });
 
-    const leads = await res.json();
-
-    const table = document.getElementById("table");
-
-    table.innerHTML = "";
-
-    let total = leads.length;
-    let today = 0;
-    let converted = 0;
-
-    const todayDate = new Date().toDateString();
-
-    leads.forEach(lead => {
-
-        if (lead.status === "Converted") {
-            converted++;
+        if (!res.ok) {
+            throw new Error(`Server error: ${res.status}`);
         }
 
-        const leadDate = new Date(lead.id).toDateString();
+        const leads = await res.json();
 
-        if (leadDate === todayDate) {
-            today++;
-        }
+        const table = document.getElementById("table");
 
-        table.innerHTML += `
+        table.innerHTML = "";
+
+        let total = leads.length;
+        let today = 0;
+        let converted = 0;
+
+        const todayDate = new Date().toDateString();
+
+        leads.forEach(lead => {
+
+            if (lead.status === "Converted") {
+                converted++;
+            }
+
+            const leadDate = new Date(lead.id).toDateString();
+
+            if (leadDate === todayDate) {
+                today++;
+            }
+
+            table.innerHTML += `
 <tr>
 
 <td>${lead.name}</td>
@@ -205,11 +225,15 @@ placeholder="Add note">
 </tr>
 `;
 
-    });
+        });
 
-    document.getElementById("totalLeads").innerText = total;
-    document.getElementById("todayLeads").innerText = today;
-    document.getElementById("convertedLeads").innerText = converted;
+        document.getElementById("totalLeads").innerText = total;
+        document.getElementById("todayLeads").innerText = today;
+        document.getElementById("convertedLeads").innerText = converted;
+    } catch (err) {
+        console.error("Load leads error:", err);
+        alert("Error loading leads: " + err.message);
+    }
 
 }
 
@@ -314,24 +338,33 @@ async function submitLead() {
     const phone = document.getElementById("phone").value;
     const service = document.getElementById("service").value;
 
-    await fetch(`${API_BASE_URL}/lead-public`, {
+    try {
+        const res = await fetch(`${API_BASE_URL}/lead-public`, {
 
-        method: "POST",
+            method: "POST",
 
-        headers: {
-            "Content-Type": "application/json"
-        },
+            headers: {
+                "Content-Type": "application/json"
+            },
 
-        body: JSON.stringify({
-            userId,
-            name,
-            phone,
-            service
-        })
+            body: JSON.stringify({
+                userId,
+                name,
+                phone,
+                service
+            })
 
-    });
+        });
 
-    alert("Submitted successfully");
+        if (!res.ok) {
+            throw new Error(`Server error: ${res.status}`);
+        }
+
+        alert("Submitted successfully");
+    } catch (err) {
+        console.error("Submit lead error:", err);
+        alert("Error submitting form: " + err.message);
+    }
 
 }
 
