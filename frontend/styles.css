@@ -20,7 +20,7 @@ body {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 1000px;
     margin: 0 auto;
     padding: 30px 20px;
     min-height: calc(100vh - 100px);
@@ -290,6 +290,17 @@ tbody tr:last-child td {
     color: #555;
 }
 
+/* Link actions */
+.link-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.link-actions button {
+    flex: 1;
+}
+
 /* Mobile responsiveness */
 @media (max-width: 768px) {
     body {
@@ -304,12 +315,18 @@ tbody tr:last-child td {
     .container {
         padding: 15px;
         min-height: auto;
+        max-width: 100%;
     }
 
     .card {
         padding: 25px;
         margin: 20px 0;
         max-width: 100%;
+        width: 100%;
+    }
+
+    h1 {
+        font-size: 28px;
     }
 
     h2 {
@@ -320,10 +337,13 @@ tbody tr:last-child td {
     select {
         padding: 12px 14px;
         font-size: 16px;
+        width: 100%;
     }
 
     button {
         padding: 12px 18px;
+        width: 100%;
+        font-size: 16px;
     }
 
     .analytics {
@@ -335,13 +355,21 @@ tbody tr:last-child td {
         font-size: 28px;
     }
 
+    .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
     table {
         font-size: 13px;
+        min-width: 600px;
+        /* Ensure table doesn't shrink too much */
     }
 
     th,
     td {
         padding: 10px 12px;
+        white-space: nowrap;
     }
 
     header {
@@ -350,15 +378,74 @@ tbody tr:last-child td {
     }
 
     header button {
-        width: auto;
-        padding: 8px 20px;
+        width: 100%;
+        max-width: 200px;
     }
 
-    .form-group {
-        margin-bottom: 14px;
+    .link-actions {
+        flex-direction: column;
+        gap: 10px;
     }
 
-    .form-subtitle {
-        font-size: 13px;
+    .link-actions button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .app-title {
+        font-size: 20px;
+        margin: 15px 0 0 0;
+    }
+
+    .container {
+        padding: 10px;
+    }
+
+    .card {
+        padding: 20px;
+        margin: 15px 0;
+    }
+
+    h1 {
+        font-size: 24px;
+    }
+
+    h2 {
+        font-size: 18px;
+    }
+
+    h3 {
+        font-size: 16px;
+    }
+
+    input,
+    select {
+        padding: 10px 12px;
+        font-size: 16px;
+    }
+
+    button {
+        padding: 10px 16px;
+        font-size: 16px;
+    }
+
+    .analytics .card span {
+        font-size: 24px;
+    }
+
+    table {
+        font-size: 12px;
+        min-width: 500px;
+    }
+
+    th,
+    td {
+        padding: 8px 10px;
+    }
+
+    #leadLink {
+        font-size: 12px;
+        padding: 12px;
     }
 }

@@ -299,6 +299,16 @@ function getUserId() {
 
 
 
+// ================= COPY LEAD LINK =================
+
+function copyLeadLink() {
+    const link = document.getElementById("leadLink").innerText;
+    navigator.clipboard.writeText(link);
+    alert("Link copied to clipboard");
+}
+
+
+
 // ================= GENERATE LEAD LINK =================
 
 function generateLeadLink() {
