@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>LeadFlow Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <h1 class="app-title">Devai Automation</h1>
+    <header>
+        <button onclick="logout()">Logout</button>
+    </header>
+
+    <div class="container">
+        <h2>LeadFlow CRM Dashboard</h2>
+
+        <div class="analytics">
+            <div class="card">
+                <h3>Total Leads</h3>
+                <span id="totalLeads">0</span>
+            </div>
+            <div class="card">
+                <h3>Leads Today</h3>
+                <span id="todayLeads">0</span>
+            </div>
+            <div class="card">
+                <h3>Converted Leads</h3>
+                <span id="convertedLeads">0</span>
+            </div>
+        </div>
+
+        <div class="card" style="max-width: 100%; margin: 30px auto;">
+            <h3>Your Lead Form Link</h3>
+            <p id="leadLink"></p>
+            <button onclick="generateLeadLink()">Generate Form Link</button>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Phone</th>
+                        <th>Service</th>
+                        <th>Status</th>
+                        <th>Note</th>
+                    </tr>
+                </thead>
+                <tbody id="table"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+
+</body>
+
+</html>
