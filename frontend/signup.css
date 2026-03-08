@@ -175,18 +175,19 @@ a:hover {
 
     .app-title {
         font-size: 24px;
-        margin: 20px 0 0 0;
+        margin: 0;
+        padding: 10px 20px;
     }
 
     .container {
-        padding: 15px;
-        min-height: calc(100vh - 100px);
+        padding: 0;
+        min-height: 100vh;
         max-width: 100%;
     }
 
     .card {
         padding: 25px;
-        margin: 20px 0;
+        margin: 0;
         max-width: 100%;
         width: 100%;
     }
@@ -224,17 +225,18 @@ a:hover {
 @media (max-width: 480px) {
     .app-title {
         font-size: 20px;
-        margin: 15px 0 0 0;
+        margin: 0;
+        padding: 10px 15px;
     }
 
     .container {
-        padding: 10px;
+        padding: 0;
     }
 
     .card {
         padding: 20px;
-        margin: 15px 0;
-        width: 95%;
+        margin: 0;
+        width: 100%;
     }
 
     h1 {
