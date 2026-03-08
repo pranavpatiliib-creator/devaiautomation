@@ -3,23 +3,19 @@
 
 <head>
     <title>Signup</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="signup.css">
 </head>
 
 <body>
-
-
-
     <div class="container">
         <div class="card">
             <h1 class="app-title">Devai Automation</h1>
-            <h2 style="text-align: center;">Create Account For Your Business</h2>
+            <h2>Create Account For Your Business</h2>
+
             <input id="name" placeholder="Name">
-
             <input id="email" placeholder="Email">
-
             <input id="password" type="password" placeholder="Password">
-
             <input id="businessName" placeholder="Business Name">
 
             <select id="profession">
@@ -30,29 +26,17 @@
             </select>
 
             <input id="businessPhone" placeholder="Business Phone">
-
             <input id="location" placeholder="City">
-
             <input id="services" placeholder="Main Service">
-
             <input id="website" placeholder="Website">
 
-            <br><br>
+            <button onclick="signup()">Signup</button>
 
-            <div style="text-align: center;">
-                <button onclick="signup()">Signup</button>
-            </div>
-
-            <br><br>
-
-            Already registered?
-            <a href="login.html">Login here</a>
-
+            <p>Already registered? <a href="login.html">Login here</a></p>
         </div>
     </div>
 
     <script src="script.js"></script>
-
 </body>
 
 </html>

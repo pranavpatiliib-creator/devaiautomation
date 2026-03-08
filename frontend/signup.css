@@ -1,90 +1,77 @@
-/* Reset and base styles */
 * {
     box-sizing: border-box;
+    margin: 0;
+    padding: 0;
 }
 
 html,
 body {
     height: 100%;
-    margin: 0;
-    padding: 0;
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
     background: #f0f4f8;
     color: #1a1a1a;
     line-height: 1.6;
-    min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
+    min-height: 100vh;
 }
 
+/* ── Desktop: centered floating card ── */
 .container {
     width: 100%;
-    max-width: 480px;
-    margin: 0 auto;
+    max-width: 460px;
     padding: 24px 16px;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     min-height: 100vh;
 }
 
-/* Card */
 .card {
     background: #ffffff;
     padding: 40px 36px;
     border-radius: 16px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.10), 0 1px 4px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.10);
     width: 100%;
-    transition: box-shadow 0.3s ease;
 }
 
-.card:hover {
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.13);
-}
-
-/* App title */
+/* Title */
 .app-title {
     text-align: center;
     font-size: 22px;
     font-weight: 700;
     color: #1a1a1a;
-    margin: 0 0 4px 0;
-    letter-spacing: -0.3px;
+    margin-bottom: 4px;
 }
 
-/* Headings */
 h2 {
     text-align: center;
     color: #007bff;
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 600;
-    margin: 0 0 20px 0;
+    margin-bottom: 22px;
 }
 
-/* Form group */
-.form-group {
-    margin-bottom: 14px;
-}
-
-/* Inputs and selects */
+/* Inputs */
 input,
 select {
+    display: block;
     width: 100%;
     padding: 12px 14px;
+    margin-bottom: 12px;
     border: 1.5px solid #e5e7eb;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: 15px;
     font-family: inherit;
     color: #1a1a1a;
-    background-color: #fafafa;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    background: #fafafa;
     appearance: none;
     -webkit-appearance: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 input::placeholder {
@@ -97,119 +84,87 @@ select {
     background-position: right 12px center;
     padding-right: 36px;
     cursor: pointer;
-    color: #1a1a1a;
-}
-
-input:hover,
-select:hover {
-    border-color: #c0c8d4;
-    background-color: #f5f7fa;
 }
 
 input:focus,
 select:focus {
     outline: none;
     border-color: #007bff;
-    background-color: #ffffff;
+    background: #fff;
     box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.10);
 }
 
 /* Button */
 button {
+    display: block;
     width: 100%;
-    padding: 13px 20px;
-    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-    color: #ffffff;
+    padding: 13px;
+    margin-top: 6px;
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: #fff;
     border: none;
     border-radius: 8px;
-    cursor: pointer;
     font-size: 15px;
     font-weight: 600;
     font-family: inherit;
-    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-    margin-top: 6px;
+    cursor: pointer;
     box-shadow: 0 2px 10px rgba(0, 123, 255, 0.25);
+    transition: transform 0.2s, box-shadow 0.2s;
 }
 
 button:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 18px rgba(0, 123, 255, 0.35);
-    background: linear-gradient(135deg, #0069d9 0%, #004494 100%);
 }
 
 button:active {
     transform: translateY(0);
-    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
 }
 
-/* Auth link */
-.auth-link,
+/* Link */
 p {
     text-align: center;
     font-size: 13.5px;
     color: #6b7280;
     margin-top: 18px;
-    margin-bottom: 0;
 }
 
 a {
     color: #007bff;
-    text-decoration: none;
     font-weight: 600;
-    transition: color 0.2s ease;
+    text-decoration: none;
 }
 
 a:hover {
-    color: #0056b3;
     text-decoration: underline;
 }
 
-/* Divider line between fields */
-.form-group+.form-group {
-    margin-top: 0;
-}
-
-/* Mobile */
-@media (max-width: 600px) {
+/* ── MOBILE: full screen ── */
+@media (max-width: 768px) {
     body {
-        align-items: flex-start;
+        display: block;
         background: #ffffff;
     }
 
     .container {
         padding: 0;
-        min-height: 100vh;
-        width: 100%;
         max-width: 100%;
-        justify-content: flex-start;
+        min-height: 100vh;
+        display: block;
     }
 
     .card {
-        padding: 36px 20px;
+        padding: 48px 20px 40px;
         border-radius: 0;
         box-shadow: none;
         min-height: 100vh;
+        min-height: 100dvh;
         width: 100%;
-        max-width: 100%;
-    }
-
-    .app-title {
-        font-size: 20px;
-        margin-top: 8px;
-    }
-
-    h2 {
-        font-size: 16px;
     }
 
     input,
-    select {
-        font-size: 16px;
-        padding: 12px 13px;
-    }
-
+    select,
     button {
         font-size: 16px;
-        padding: 13px;
     }
 }
