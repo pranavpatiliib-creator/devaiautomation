@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
+const crypto = require('crypto');
 
 const app = express();
 
@@ -276,6 +277,64 @@ app.put("/lead-note/:id", verifyToken, (req, res) => {
 
 });
 
+// Store reset tokens temporarily (in memory)
+let resetTokens = {};
+
+// ── Forgot Password ──────────────────────────────
+app.post('/forgot-password', (req, res) => {
+    const { email } = req.body;
+    const users = readUsers();
+    const user = users.find(u => u.email === email);
+
+    if (!user) {
+        return res.status(404).json({ message: 'Email not found' });
+    }
+
+    // Generate token
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiry = Date.now() + 15 * 60 * 1000; // 15 minutes
+
+    resetTokens[token] = { email, expiry };
+
+    // In production, send email. For now return token directly.
+    const resetLink = `reset-password.html?token=${token}`;
+
+    res.json({ 
+        message: 'Reset link generated', 
+        resetLink  // remove this in production, send via email instead
+    });
+});
+
+// ── Reset Password ───────────────────────────────
+app.post('/reset-password', (req, res) => {
+    const { token, newPassword } = req.body;
+    const tokenData = resetTokens[token];
+
+    if (!tokenData) {
+        return res.status(400).json({ message: 'Invalid or expired token' });
+    }
+
+    if (Date.now() > tokenData.expiry) {
+        delete resetTokens[token];
+        return res.status(400).json({ message: 'Token expired. Please try again.' });
+    }
+
+    const users = readUsers();
+    const userIndex = users.findIndex(u => u.email === tokenData.email);
+
+    if (userIndex === -1) {
+        return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Hash new password
+    const bcrypt = require('bcryptjs');
+    const hashed = bcrypt.hashSync(newPassword, 10);
+    users[userIndex].password = hashed;
+    writeUsers(users);
+
+    delete resetTokens[token]; // token used, delete it
+    res.json({ message: 'Password reset successful' });
+});
 // ================= PUBLIC LEAD FORM ====================
 
 app.post("/lead-public", (req, res) => {

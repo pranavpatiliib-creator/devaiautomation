@@ -437,9 +437,97 @@ function logout() {
     window.location = "login.html";
 
 }
+// forgot pssword
+async function forgotPassword() {
+    const email = document.getElementById('email').value.trim();
+    const message = document.getElementById('message');
+    const resetLinkBox = document.getElementById('resetLinkBox');
 
+    if (!email) {
+        message.className = 'error';
+        message.textContent = 'Please enter your email.';
+        return;
+    }
 
+    try {
+        const res = await fetch('http://localhost:5000/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
 
+        const data = await res.json();
+
+        if (res.ok) {
+            message.className = 'success';
+            message.textContent = 'Reset link generated! Click the link below.';
+            // Show reset link (remove in production - send via email instead)
+            resetLinkBox.style.display = 'block';
+            resetLinkBox.innerHTML = `<a href="${data.resetLink}">Click here to reset password</a>`;
+        } else {
+            message.className = 'error';
+            message.textContent = data.message || 'Something went wrong.';
+        }
+    } catch (err) {
+        message.className = 'error';
+        message.textContent = 'Could not connect to server.';
+    }
+}
+//reset password
+async function resetPassword() {
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    const message = document.getElementById('message');
+
+    // Get token from URL
+    const token = new URLSearchParams(window.location.search).get('token');
+
+    if (!token) {
+        message.className = 'error';
+        message.textContent = 'Invalid reset link.';
+        return;
+    }
+
+    if (!newPassword || !confirmPassword) {
+        message.className = 'error';
+        message.textContent = 'Please fill in both fields.';
+        return;
+    }
+
+    if (newPassword !== confirmPassword) {
+        message.className = 'error';
+        message.textContent = 'Passwords do not match.';
+        return;
+    }
+
+    if (newPassword.length < 8) {
+        message.className = 'error';
+        message.textContent = 'Password must be at least 8 characters.';
+        return;
+    }
+
+    try {
+        const res = await fetch('http://localhost:5000/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, newPassword })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+            message.className = 'success';
+            message.textContent = 'Password reset successful! Redirecting to login...';
+            setTimeout(() => window.location.href = 'login.html', 2000);
+        } else {
+            message.className = 'error';
+            message.textContent = data.message || 'Something went wrong.';
+        }
+    } catch (err) {
+        message.className = 'error';
+        message.textContent = 'Could not connect to server.';
+    }
+}
 // ================= PUBLIC FORM SUBMIT ===============
 
 async function submitLead() {
