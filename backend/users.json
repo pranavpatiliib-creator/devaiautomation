@@ -1,3 +1,15 @@
 [
-
+  {
+    "id": 1773056573683,
+    "name": "Pranav",
+    "email": "pranavpatiliib@gmail.com",
+    "password": "$2b$10$bjetailEmWktgM4gJxQmpu3lS/GN.8NN5XA4a0uPflag2Qk3gFKcG",
+    "profession": "Gym",
+    "businessName": "Lilai",
+    "businessPhone": "7020637398",
+    "location": "Shahada",
+    "services": "hilt",
+    "website": "www.enggnagar.com",
+    "createdAt": "2026-03-09T11:42:53.683Z"
+  }
 ]

@@ -51,21 +51,70 @@ async function submitLeadDashboard() {
 
 
 
-// ================= SIGNUP =================
 async function signup() {
 
-    const name = document.getElementById("name").value;
-    const email = document.getElementById("email").value;
-    const password = document.getElementById("password").value;
-    const profession = document.getElementById("profession").value;
+    const signupBtn = document.getElementById("signupBtn");
+    const spinner = document.getElementById("spinner");
 
-    const businessName = document.getElementById("businessName").value;
-    const businessPhone = document.getElementById("businessPhone").value;
-    const location = document.getElementById("location").value;
-    const services = document.getElementById("services").value;
-    const website = document.getElementById("website").value;
+    const name = document.getElementById("name").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const profession = document.getElementById("profession").value.trim();
+    const businessName = document.getElementById("businessName").value.trim();
+    const businessPhone = document.getElementById("businessPhone").value.trim();
+    const location = document.getElementById("location").value.trim();
+    const services = document.getElementById("services").value.trim();
+    const website = document.getElementById("website").value.trim();
+
+    // 1️⃣ Empty field validation
+    if (
+        !name ||
+        !email ||
+        !password ||
+        !profession ||
+        !businessName ||
+        !businessPhone ||
+        !location ||
+        !services ||
+        !website
+    ) {
+        alert("Please fill all fields.");
+        return;
+    }
+
+    // 2️⃣ Email validation
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailPattern.test(email)) {
+        alert("Please enter a valid email address.");
+        return;
+    }
+
+    // 3️⃣ Phone number validation (10 digits)
+    const phonePattern = /^[0-9]{10}$/;
+
+    if (!phonePattern.test(businessPhone)) {
+        alert("Phone number must be 10 digits.");
+        return;
+    }
+
+    // 4️⃣ Password strength validation
+    const passwordPattern =
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
+
+    if (!passwordPattern.test(password)) {
+        alert(
+            "Password must be at least 8 characters and include uppercase, lowercase, number and special character."
+        );
+        return;
+    }
+
+    // 5️⃣ Disable button + show spinner
+    signupBtn.disabled = true;
+    spinner.style.display = "inline-block";
 
     try {
+
         const res = await fetch(`${API_BASE_URL}/signup`, {
 
             method: "POST",
@@ -97,21 +146,27 @@ async function signup() {
         } else {
 
             alert("Account created successfully");
-
             window.location = "login.html";
 
         }
-    } catch (err) {
-        console.error("Signup error:", err);
-        alert("Error connecting to server. Please check your connection.");
-    }
 
+    } catch (err) {
+
+        console.error("Signup error:", err);
+        alert("Server connection error.");
+
+    } finally {
+
+        // 6️⃣ Enable button again
+        signupBtn.disabled = false;
+        spinner.style.display = "none";
+
+    }
 }
 
 
 
 // ================= LOGIN =================
-
 async function login() {
 
     const email = document.getElementById("email").value;
@@ -140,14 +195,21 @@ async function login() {
             return;
         }
 
+        // Save login data
         localStorage.setItem("token", data.token);
+        localStorage.setItem("businessName", data.businessName);
+        localStorage.setItem("name", data.name);
+        localStorage.setItem("profession", data.profession);
 
         alert("Login successful");
 
         window.location = "dashboard.html";
+
     } catch (err) {
+
         console.error("Login error:", err);
         alert("Error connecting to server. Please check your connection.");
+
     }
 
 }
@@ -310,20 +372,62 @@ function copyLeadLink() {
 
 
 // ================= GENERATE LEAD LINK =================
-
 function generateLeadLink() {
 
     const userId = getUserId();
 
     const formPath = window.location.pathname.replace('dashboard.html', 'form.html');
+
     const link = `${window.location.origin}${formPath}?user=${userId}`;
 
     document.getElementById("leadLink").innerText = link;
 
+    // clear previous QR
+    document.getElementById("qrcode").innerHTML = "";
+
+    // generate QR
+    new QRCode(document.getElementById("qrcode"), {
+        text: link,
+        width: 180,
+        height: 180
+    });
+
 }
+// genrate the qr code
 
+function generateQR() {
 
+    const link = document.getElementById("leadLink").innerText;
 
+    if (!link) {
+        alert("Generate link first");
+        return;
+    }
+
+    document.getElementById("qrcode").innerHTML = "";
+
+    new QRCode(document.getElementById("qrcode"), {
+        text: link,
+        width: 200,
+        height: 200
+    });
+
+}
+// download the qr code
+function downloadQR() {
+
+    const img = document.querySelector("#qrcode img");
+
+    if (!img) {
+        alert("Generate QR code first");
+        return;
+    }
+
+    const link = document.createElement("a");
+    link.href = img.src;
+    link.download = "lead-form-qr.png";
+    link.click();
+}
 // ================= LOGOUT =================
 
 function logout() {
@@ -336,7 +440,7 @@ function logout() {
 
 
 
-// ================= PUBLIC FORM SUBMIT =================
+// ================= PUBLIC FORM SUBMIT ===============
 
 async function submitLead() {
 
@@ -377,8 +481,25 @@ async function submitLead() {
     }
 
 }
+// Load user data in dashboard
 
+const businessName = localStorage.getItem("businessName");
+const name = localStorage.getItem("name");
+const token = localStorage.getItem("token");
 
+// Show business name
+if (document.getElementById("businessTitle")) {
+    document.getElementById("businessTitle").innerText =
+        "Welcome to " + businessName + " Dashboard";
+}
+
+// Show user name
+if (document.getElementById("userName")) {
+    document.getElementById("userName").innerText = name;
+}
+if (window.location.pathname.includes("dashboard") && !token) {
+    window.location = "login.html";
+}
 
 // ================= LOAD DASHBOARD =================
 

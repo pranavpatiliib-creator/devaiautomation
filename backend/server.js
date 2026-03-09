@@ -46,48 +46,103 @@ function verifyToken(req, res, next) {
 // ================= SIGNUP =================
 app.post("/signup", async (req, res) => {
 
-    const {
-        name,
-        email,
-        password,
-        profession,
-        businessName,
-        businessPhone,
-        location,
-        services,
-        website
-    } = req.body;
+    try {
 
-    const data = fs.readFileSync(USER_FILE);
-    const users = JSON.parse(data);
+        const {
+            name,
+            email,
+            password,
+            profession,
+            businessName,
+            businessPhone,
+            location,
+            services,
+            website
+        } = req.body;
 
-    // check if user already exists
-    const existingUser = users.find(u => u.email === email);
+        // 1️⃣ Check empty fields
+        if (
+            !name ||
+            !email ||
+            !password ||
+            !profession ||
+            !businessName ||
+            !businessPhone ||
+            !location ||
+            !services ||
+            !website
+        ) {
+            return res.status(400).json({ error: "All fields are required" });
+        }
 
-    if (existingUser) {
-        return res.json({ error: "User already exists" });
+        // 2️⃣ Email validation
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!emailPattern.test(email)) {
+            return res.status(400).json({ error: "Invalid email format" });
+        }
+
+        // 3️⃣ Phone validation (10 digits)
+        const phonePattern = /^[0-9]{10}$/;
+
+        if (!phonePattern.test(businessPhone)) {
+            return res.status(400).json({ error: "Phone number must be 10 digits" });
+        }
+
+        // 4️⃣ Password strength
+        const passwordPattern =
+            /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
+
+        if (!passwordPattern.test(password)) {
+            return res.status(400).json({
+                error: "Password must contain uppercase, lowercase, number and special character"
+            });
+        }
+
+        // 5️⃣ Read users file safely
+        let users = [];
+
+        if (fs.existsSync(USER_FILE)) {
+            const data = fs.readFileSync(USER_FILE);
+            users = JSON.parse(data);
+        }
+
+        // 6️⃣ Check if email already exists
+        const existingUser = users.find(u => u.email === email);
+
+        if (existingUser) {
+            return res.status(400).json({ error: "User already exists" });
+        }
+
+        // 7️⃣ Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const newUser = {
+            id: Date.now(),
+            name,
+            email,
+            password: hashedPassword,
+            profession,
+            businessName,
+            businessPhone,
+            location,
+            services,
+            website,
+            createdAt: new Date()
+        };
+
+        users.push(newUser);
+
+        fs.writeFileSync(USER_FILE, JSON.stringify(users, null, 2));
+
+        res.json({ success: true });
+
+    } catch (err) {
+
+        console.error("Signup error:", err);
+        res.status(500).json({ error: "Server error" });
+
     }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = {
-        id: Date.now(),
-        name,
-        email,
-        password: hashedPassword,
-        profession,
-        businessName,
-        businessPhone,
-        location,
-        services,
-        website
-    };
-
-    users.push(newUser);
-
-    fs.writeFileSync(USER_FILE, JSON.stringify(users, null, 2));
-
-    res.json({ success: true });
 
 });
 
@@ -122,7 +177,9 @@ app.post("/login", async (req, res) => {
     res.json({
         success: true,
         token,
-        profession: user.profession
+        profession: user.profession,
+        businessName: user.businessName,
+        
     });
 
 });

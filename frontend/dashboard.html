@@ -2,43 +2,60 @@
 <html>
 
 <head>
-    <title>LeadFlow Dashboard</title>
+    <title>Devai Automation Dashboard</title>
     <link rel="stylesheet" href="dashboard.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<div class="dashboard-header">
+    <div class="left">
+        🏢 <span id="businessTitle"></span>
+    </div>
+
+    <div class="right">
+        👤 <span id="userName"></span>
+        <button onclick="logout()">Logout</button>
+    </div>
+
+</div>
 
 <body>
-    <h1 class="app-title">Devai Automation</h1>
-    <header>
-        <button onclick="logout()">Logout</button>
-    </header>
 
-    <div class="container">
-        <h2>LeadFlow CRM Dashboard</h2>
-
-        <div class="analytics">
-            <div class="card">
-                <h3>Total Leads</h3>
-                <span id="totalLeads">0</span>
-            </div>
-            <div class="card">
-                <h3>Leads Today</h3>
-                <span id="todayLeads">0</span>
-            </div>
-            <div class="card">
-                <h3>Converted Leads</h3>
-                <span id="convertedLeads">0</span>
-            </div>
+    <div class="analytics">
+        <div class="card">
+            <h3>Total Leads</h3>
+            <span id="totalLeads">0</span>
         </div>
-
-        <div class="card" style="max-width: 100%; margin: 30px auto;">
-            <h3>Your Lead Form Link</h3>
-            <p id="leadLink"></p>
-            <div class="link-actions">
-                <button onclick="generateLeadLink()">Generate Form Link</button>
-                <button onclick="copyLeadLink()">Copy Link</button>
-            </div>
+        <div class="card">
+            <h3>Leads Today</h3>
+            <span id="todayLeads">0</span>
         </div>
+        <div class="card">
+            <h3>Converted Leads</h3>
+            <span id="convertedLeads">0</span>
+        </div>
+    </div>
 
+
+    <div class="card" style="max-width: 100%; margin: 30px auto;">
+        <h3>Your Lead Form Link</h3>
+        <p id="leadLink"></p>
+        <div class="link-actions">
+            <button onclick="generateLeadLink()">Generate Form Link</button>
+            <button onclick="copyLeadLink()">Copy Link</button>
+
+        </div>
+        <div class="card">
+
+            <h3>Lead Form QR Code</h3>
+
+            <button onclick="generateQR()">Generate QR Code</button>
+            <button onclick="downloadQR()">Download QR Code</button>
+            <br><br>
+
+            <div id="qrcode"></div>
+
+        </div>
         <div class="table-container">
             <table>
                 <thead>

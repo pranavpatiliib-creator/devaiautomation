@@ -3,6 +3,31 @@
     box-sizing: border-box;
 }
 
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 30px;
+    background: #111;
+    color: white;
+    font-size: 18px;
+}
+
+.dashboard-header .right {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.dashboard-header button {
+    background: red;
+    border: none;
+    color: white;
+    padding: 6px 12px;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
 html,
 body {
     height: 100%;
@@ -299,6 +324,12 @@ tbody tr:last-child td {
 
 .link-actions button {
     flex: 1;
+}
+
+#qrcode {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
 }
 
 /* Mobile responsiveness */
