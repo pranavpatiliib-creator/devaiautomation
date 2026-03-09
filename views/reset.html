@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Reset Password</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/css/auth.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <h1 class="app-title">Devai Automation</h1>
+            <h2>Reset Password</h2>
+            <p class="subtitle">Enter your new password below</p>
+
+            <input id="newPassword" type="password" placeholder="New Password">
+            <input id="confirmPassword" type="password" placeholder="Confirm New Password">
+            <button onclick="resetPassword()">Reset Password</button>
+
+            <div id="message"></div>
+
+            <p>Back to <a href="/login">Login</a></p>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+</body>
+
+</html>

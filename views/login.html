@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/css/auth.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <h1 class="app-title">Devai Automation</h1>
+            <h2>Login</h2>
+
+            <input id="email" placeholder="Email">
+            <input id="password" type="password" placeholder="Password">
+            <p style="text-align:right; margin-bottom: 14px;">
+                <a href="/forgot-password">Forgot password?</a>
+            </p>
+
+            <button onclick="login()">Login</button>
+
+            <p>Don't have an account? <a href="/signup">Signup here</a></p>
+        </div>
+    </div>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+</body>
+
+</html>
