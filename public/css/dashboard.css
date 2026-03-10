@@ -271,7 +271,25 @@ tbody tr:hover {
 tbody tr:last-child td {
     border-bottom: none;
 }
+/* New Lead */
+tbody tr.newLead {
+    background-color: #e5e7eb;
+}
 
+/* Contacted */
+tbody tr.contacted {
+    background-color: #fde68a;
+}
+
+/* Converted */
+tbody tr.converted {
+    background-color: #86efac;
+}
+
+/* Lost */
+tbody tr.lost {
+    background-color: #fca5a5;
+}
 /* Form link section */
 #leadLink {
     background-color: #f9fafb;

@@ -187,7 +187,17 @@ async function resetPassword() {
         message.textContent = 'Could not connect to server.';
     }
 }
+function getUserId() {
 
+    const token = localStorage.getItem("token");
+
+    if (!token) return null;
+
+    const payload = JSON.parse(atob(token.split('.')[1]));
+
+    return payload.id;
+
+}
 function logout() {
     localStorage.removeItem("token");
     localStorage.removeItem("businessName");

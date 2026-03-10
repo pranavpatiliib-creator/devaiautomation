@@ -17,15 +17,10 @@ const authRoutes = require('./routes/auth');
 const leadsRoutes = require('./routes/leads');
 const publicRoutes = require('./routes/public');
 
-// API Routes (must be before page routes)
+// Register routes
 app.use('/api', authRoutes);
 app.use('/api', leadsRoutes);
 app.use('/api', publicRoutes);
-
-// Also keep original routes for backward compatibility
-app.use('/', authRoutes);
-app.use('/', leadsRoutes);
-app.use('/', publicRoutes);
 
 // ================= SERVE VIEWS =================
 // Page routes (must be after API routes to avoid conflicts)
@@ -75,10 +70,12 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Internal server error' });
 });
 
+
 // ================= SERVER START =================
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`✓ Server running on port ${PORT}`);
     console.log(`✓ API: http://localhost:${PORT}`);
     console.log(`✓ Frontend: http://localhost:${PORT}/`);
+
 });
