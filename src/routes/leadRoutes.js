@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const XLSX = require("xlsx");
-const Lead = require("../models/Lead");
+const Lead = require("../../models/Lead");
 
 // Test route to verify router loads
 router.get("/test", (req, res) => {

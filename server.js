@@ -13,9 +13,9 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ================= ROUTES =================
-const authRoutes = require('./routes/auth');
-const leadsRoutes = require('./routes/leads');
-const publicRoutes = require('./routes/public');
+const authRoutes = require('./src/routes/auth');
+const leadsRoutes = require('./src/routes/leads');
+const publicRoutes = require('./src/routes/public');
 
 // Register routes
 app.use('/api', authRoutes);
