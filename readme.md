@@ -1,492 +1,191 @@
-# LeadFlow AI - Lead Management System
+# LeadFlow AI - Supabase Migration README
 
-A comprehensive full-stack lead management application that enables businesses to capture, track, and manage customer leads efficiently. Built with Node.js backend and vanilla JavaScript frontend.
+This project now uses Supabase (Postgres) instead of local JSON files for users and leads.
 
-## 🎯 Overview
+## 1. What Was Changed
 
-LeadFlow AI is a powerful lead management platform designed for businesses that need to manage customer inquiries and leads in one centralized location. Whether you run a gym, salon, clinic, or real estate business, LeadFlow AI helps you organize, track, and convert leads into customers.
+The following backend flow is now Supabase-based:
 
-## ✨ Features
+- User signup/login data storage
+- Password reset user updates
+- Lead create/read/update/delete
+- Lead export data source
 
-### 👔 For Business Users
+Main files changed:
 
-- **User Registration & Authentication**
-  - Secure signup with business details (name, profession, contact info)
-  - Support for multiple professional types (Gym, Salon, Clinic, Real Estate)
-  - JWT-based authentication with bcryptjs password hashing
+- `config/supabase.js`
+- `models/User.js`
+- `models/Lead.js`
+- `controllers/authController.js`
+- `controllers/leadsController.js`
+- `controllers/publicController.js`
+- `routes/leads.js`
+- `routes/leadRoutes.js`
+- `middleware/auth.js`
+- `database/schema.sql`
 
-- **Lead Dashboard**
-  - Real-time lead statistics (total leads, today's leads, converted leads)
-  - Visual overview of business performance
-  - Lead analytics and insights
+## 2. Prerequisites
 
-- **Lead Management**
-  - View all incoming leads with details
-  - Add leads manually to the system
-  - Update lead status (Pending, Contacted, Converted, Lost)
-  - Add notes and comments to leads
-  - Track lead history and interactions
+- Node.js 18+ recommended
+- npm
+- A Supabase project
 
-- **Lead Form Generation**
-  - Generate unique public lead form links
-  - Share forms with customers via email, social media, or website
-  - Customers can submit inquiries without needing an account
+## 3. Environment Variables
 
-### 👥 For Customers
+Set these in `.env`:
 
-- **Simple Lead Submission**
-  - Easy-to-use public form for submitting inquiries
-  - No account registration required
-  - Quick response from businesses
-  - Submit via name, phone, and service inquiry
-
-## 🛠️ Tech Stack
-
-### Backend
-- **Runtime**: Node.js (v14+)
-- **Web Framework**: Express.js (v5.2.1)
-- **Authentication**: JSON Web Token (JWT) based tokens
-- **Password Security**: bcryptjs (hashing and salting)
-- **API Style**: RESTful API
-- **CORS**: Enabled for cross-origin requests
-- **Data Storage**: JSON files (persistent storage)
-  - `users.json` - User accounts and business information
-  - `leads.json` - Lead data and inquiries
-
-### Frontend
-- **Languages**: HTML5, CSS3, JavaScript (ES6+)
-- **Architecture**: Vanilla JavaScript (no framework dependencies)
-- **Styling**: Custom CSS with responsive design
-- **Browser Support**: All modern browsers (Chrome, Firefox, Safari, Edge)
-
-### Database
-- Currently: JSON file-based storage
-- Future: SQL schema ready (schema.sql provided)
-
-## 📁 Project Structure
-
-```
-startup/
-├── backend/
-│   ├── server.js              # Express server & all API endpoints
-│   ├── package.json           # Node.js dependencies & scripts
-│   ├── users.json             # User accounts database
-│   ├── leads.json             # Leads database
-│   └── README.md
-├── frontend/
-│   ├── index.html             # Public lead form page
-│   ├── login.html             # Business user login page
-│   ├── signup.html            # Business user registration page
-│   ├── dashboard.html         # Lead management dashboard
-│   ├── forgot-password.html   # Password recovery page
-│   ├── reset.html             # Password reset page
-│   ├── script.js              # Main JavaScript logic
-│   ├── index.css              # Lead form styles
-│   ├── login.css              # Login page styles
-│   ├── signup.css             # Signup page styles
-│   ├── form.css               # Form styles
-│   └── dashboard.css          # Dashboard styles
-├── database/
-│   └── schema.sql             # SQL database schema (future DB migration)
-├── .gitignore                 # Git ignore rules
-└── README.md                  # This file
+```env
+PORT=5000
+NODE_ENV=development
+JWT_SECRET=your_jwt_secret
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_KEY=your_supabase_service_role_key
 ```
 
-## 🚀 Getting Started
+Important:
 
-### Prerequisites
+- `SUPABASE_KEY` should be a backend secret key (service role) for server-side operations.
+- Do not expose this key in browser/frontend code.
 
-- **Node.js**: v14.0.0 or higher ([Download](https://nodejs.org/))
-- **npm**: v6.0.0 or higher (comes with Node.js)
-- **Modern Browser**: Chrome, Firefox, Safari, or Edge
-- **Optional**: VS Code Live Server extension for local frontend development
+## 4. Create Supabase Tables
 
-### Installation & Setup
+Run `database/schema.sql` in Supabase SQL Editor.
 
-#### 1. Clone or Download the Project
+File: `database/schema.sql`
+
+It creates:
+
+- `public.users`
+- `public.leads`
+- Indexes on `leads.user_id` and `leads.created_at`
+
+If tables already exist, `IF NOT EXISTS` keeps this safe to re-run.
+
+## 5. Install and Run
 
 ```bash
-# Navigate to project directory
-cd startup
-```
-
-#### 2. Set Up Backend
-
-```bash
-# Navigate to backend directory
-cd backend
-
-# Install all dependencies
 npm install
+npm run dev
+```
 
-# Start the server
+or
+
+```bash
 npm start
 ```
 
-**Expected Output:**
-```
-Server running on http://localhost:5000
-```
+Server starts at:
 
-> ⚠️ **Note**: The backend will be available at `http://localhost:5000`
+- `http://localhost:5000`
 
-#### 3. Set Up Frontend
+## 6. API Endpoints (Current Backend)
 
-**Option A: Using Live Server (Recommended)**
-- Install VS Code Live Server extension
-- Right-click on `frontend/index.html`
-- Select "Open with Live Server"
-- Browser will automatically open at `http://localhost:5500`
+All routes are mounted under `/api`.
 
-**Option B: Direct Browser Access**
-- Open `frontend/index.html` directly in your browser
-- Or use any local HTTP server
+Authentication:
 
-**Option C: Simple HTTP Server**
-```bash
-# From the project root
-cd frontend
-python -m http.server 8000
-# Access at http://localhost:8000
-```
+- `POST /api/signup`
+- `POST /api/login`
+- `POST /api/forgot-password`
+- `POST /api/reset-password`
 
-## 📖 Usage Guide
+Leads (JWT required):
 
-### 🏪 For Business Users
+- `GET /api/leads`
+- `POST /api/lead`
+- `PUT /api/lead/:id`
+- `PUT /api/lead-note/:id`
+- `DELETE /api/lead/:id`
+- `GET /api/leads/export`
 
-#### 1. **Create an Account (Sign Up)**
+Public:
 
-Navigate to `signup.html` (`/signup.html`)
+- `POST /api/lead-public`
 
-Fill in the following details:
-- **Full Name**: Your business owner's name
-- **Email**: Valid email address (used for login)
-- **Password**: Strong password (minimum 6 characters recommended)
-- **Profession**: Select your business type
-  - Gym
-  - Salon
-  - Clinic
-  - Real Estate
-- **Business Name**: Your business/brand name
-- **Phone**: Business contact number
-- **Location**: Your business location/address
-- **Services**: Services you offer (comma-separated)
-- **Website**: Your business website URL
+## 7. Supabase Data Mapping
 
-Click **"Sign Up"** to create your account.
+### Users
 
-#### 2. **Log In**
+API/app fields:
 
-Navigate to `login.html` (`/login.html`)
+- `businessName`
+- `businessPhone`
+- `createdAt`
 
-Enter your credentials:
-- **Email**: The email you registered with
-- **Password**: Your account password
+Database columns:
 
-Click **"Login"** to access your dashboard.
+- `business_name`
+- `business_phone`
+- `created_at`
 
-#### 3. **Access Your Dashboard**
+### Leads
 
-After successful login, you'll be redirected to `dashboard.html`
+API/app fields:
 
-Your dashboard includes:
+- `userId`
+- `createdAt`
 
-- **Lead Statistics Card**
-  - Total Leads: All leads received
-  - Today's Leads: Leads received today
-  - Converted Leads: Successfully converted leads
+Database columns:
 
-- **Lead Management Section**
-  - View all submitted leads in a table
-  - See lead details (name, phone, service, status, date)
-  - Update lead status (Pending → Contacted → Converted → Lost)
-  - Add notes to each lead
+- `user_id`
+- `created_at`
 
-- **Generate Form Link**
-  - Create a unique public form URL
-  - Share with customers via email, social media, or website
-  - Customers can submit inquiries without accounts
+## 8. Auth Header Format
 
-#### 4. **Manage Leads**
+JWT middleware now accepts both:
 
-In the dashboard:
-- **View Leads**: See all incoming leads in real-time
-- **Update Status**: Change lead status as you interact with them
-- **Add Notes**: Keep track of conversations and follow-ups
-- **Delete Leads**: Remove old or duplicate leads
+- Raw token: `Authorization: <token>`
+- Bearer token: `Authorization: Bearer <token>`
 
-#### 5. **Forgot Password**
+## 9. Optional: Migrate Old Local JSON Data
 
-Navigate to `forgot-password.html` if you forget your password:
-- Enter your registered email
-- Receive reset link
-- Create a new password
+If you want previous records from:
 
-### 👥 For Customers
+- `data/users.json`
+- `data/leads.json`
 
-#### **Submit a Lead** (No Account Needed)
+You can import them into Supabase tables by matching fields:
 
-Navigate to the public form page (`index.html`)
+- `businessName -> business_name`
+- `businessPhone -> business_phone`
+- `userId -> user_id`
+- `createdAt -> created_at`
 
-Fill in simple details:
-- **Name**: Customer's full name
-- **Phone**: Contact number
-- **Service**: Service interested in
-
-Click **"Submit"** button.
-
-Your inquiry will be received by the business instantly and visible in their dashboard.
-
-## 🔌 API Endpoints
-
-### Authentication Endpoints
-
-```
-POST /signup
-  - Create new business account
-  - Body: { name, email, password, profession, business_name, phone, location, services, website }
-
-POST /login
-  - User login
-  - Body: { email, password }
-  - Returns: JWT token
-
-POST /forgot-password
-  - Send password reset email
-  - Body: { email }
-
-POST /reset-password
-  - Reset password with token
-  - Body: { token, new_password }
-```
+Keep `id` values as numbers to preserve existing token/form-link behavior.
 
-### Lead Endpoints
-
-```
-GET /leads
-  - Get all leads for logged-in user
-  - Headers: { Authorization: token }
-
-POST /leads
-  - Create new lead
-  - Body: { name, phone, service, email (optional) }
-
-PUT /leads/:id
-  - Update a lead
-  - Body: { status, notes, updated_fields }
-  - Headers: { Authorization: token }
-
-DELETE /leads/:id
-  - Delete a lead
-  - Headers: { Authorization: token }
-```
-
-### User Endpoints
-
-```
-GET /user/profile
-  - Get user profile information
-  - Headers: { Authorization: token }
-
-PUT /user/profile
-  - Update user profile
-  - Body: { updated_fields }
-  - Headers: { Authorization: token }
-```
-
-## 🔐 Security Features
-
-- **Password Hashing**: bcryptjs with salt rounds for secure password storage
-- **JWT Authentication**: Stateless token-based authentication
-- **CORS Protection**: Cross-origin resource sharing configured
-- **Input Validation**: Server-side validation for all inputs
-- **Access Control**: Protected routes require valid JWT token
-
-## 📊 Data Models
-
-### User (Business Owner)
-
-```json
-{
-  "id": "uuid",
-  "name": "string",
-  "email": "string",
-  "password": "hashed_string",
-  "profession": "Gym|Salon|Clinic|Real Estate",
-  "business_name": "string",
-  "phone": "string",
-  "location": "string",
-  "services": "string",
-  "website": "string",
-  "created_at": "timestamp"
-}
-```
-
-### Lead
-
-```json
-{
-  "id": "uuid",
-  "name": "string",
-  "phone": "string",
-  "email": "string (optional)",
-  "service": "string",
-  "status": "Pending|Contacted|Converted|Lost",
-  "notes": "string",
-  "user_id": "uuid (business owner)",
-  "submitted_date": "timestamp"
-}
-```
+## 10. Verification Checklist
 
-## 🧪 Testing
+After setup, test this flow:
 
-### Test Account Credentials
+1. Signup a new user
+2. Login and receive JWT
+3. Submit public lead
+4. Open dashboard and load leads
+5. Update lead status/note
+6. Export leads to Excel
 
-After signup, you can test the application with:
+## 11. Troubleshooting
 
-**Business Account:**
-```
-Email: test@business.com
-Password: test123
-```
+### `Missing SUPABASE_URL or SUPABASE_KEY in environment`
 
-**Public Form:**
-- Submit leads from `index.html`
-- View submitted leads in the dashboard
+- Check `.env` exists at project root.
+- Restart server after updating `.env`.
 
-## 🐛 Troubleshooting
+### `relation "users" does not exist` or `relation "leads" does not exist`
 
-### Issue: "Cannot GET /..."
-**Solution**: Make sure backend server is running (npm start)
+- Run `database/schema.sql` in Supabase SQL editor.
 
-### Issue: CORS Error
-**Solution**: Backend CORS is enabled; ensure frontend is accessing correct URL
+### Supabase permission/RLS errors
 
-### Issue: Leads not appearing
-**Solution**: 
-- Check browser console for errors (F12)
-- Verify JWT token is valid
-- Ensure you're logged in
+- Use a server-side secret key in `SUPABASE_KEY`.
+- Ensure your table policies/permissions allow backend operations.
 
-### Issue: File not found errors
-**Solution**: 
-- Verify all files exist in correct directories
-- Check file paths in frontend JavaScript code
-- Ensure backend is serving from correct directory
+### `Invalid token`
 
-## 📈 Future Enhancements
+- Re-login to get a fresh JWT.
+- Ensure request header is either raw token or `Bearer <token>`.
 
-- [ ] Migration from JSON to SQL database (schema.sql ready)
-- [ ] Email notifications for new leads
-- [ ] Advanced lead analytics and reports
-- [ ] Multi-user team support
-- [ ] Email verification during signup
-- [ ] Two-factor authentication (2FA)
-- [ ] Lead assignment and workflow automation
-- [ ] Integration with CRM systems
-- [ ] Mobile app (React Native)
-- [ ] Real-time notifications with WebSockets
-- [ ] Lead scoring and prioritization
+## 12. Notes
 
-## 📝 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the project
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the ISC License - see the LICENSE file for details.
-
-## 📧 Support & Contact
-
-For questions, issues, or feedback:
-- Create an issue on the repository
-- Contact: support@leadflow.ai
-- Documentation: See this README for detailed information
-
-## 🙏 Acknowledgments
-
-- Built with Express.js and Node.js
-- Security powered by bcryptjs and JWT
-- Responsive design principles for accessibility
-
----
-
-**Last Updated**: March 2026  
-**Version**: 1.0.0  
-**Status**: Active Development
-   - View and manage all your leads
-   - Update lead status (New, Contacted, Converted, Lost)
-   - Add notes to leads
-
-4. **Share Form**: Click "Generate Form Link" to create a shareable URL for customers to submit leads
-
-### For Customers
-
-1. **Submit Lead**: Visit the business's lead form link
-   - Enter your name, phone, and the service you're interested in
-   - No account required!
-
-## 🔌 API Endpoints
-
-### Authentication
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/signup` | Register a new user |
-| POST | `/login` | Login and get JWT token |
-
-### Leads (Protected - Requires JWT)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/leads` | Get all leads for logged-in user |
-| POST | `/lead` | Add a new lead |
-| PUT | `/lead/:id` | Update lead status |
-| PUT | `/lead-note/:id` | Add/update lead note |
-
-### Public Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/lead-public` | Submit lead without auth |
-
-## 🔐 Security Features
-
-- Password hashing with bcryptjs (10 salt rounds)
-- JWT token-based authentication
-- Token verification middleware
-- Password strength validation (8+ chars, uppercase, lowercase, number, special char)
-- Email format validation
-- Phone number validation (10 digits)
-
-## 📝 Environment Variables
-
-The server runs on port 5000 by default. You can override it:
-
-```bash
-PORT=3000 npm start
-```
-
-## 🔧 Future Enhancements
-
-- Database integration (MySQL/PostgreSQL)
-- Email notifications for new leads
-- SMS notifications
-- Lead assignment and team collaboration
-- Analytics and reporting
-- Export leads to CSV/Excel
-
-## 📄 License
-
-ISC
-
-## 👨‍💻 Author
-
-Devai Automation Team
-
+- `config/database.js` and local JSON files can be kept as legacy backups, but active runtime now uses Supabase models.
+- Password reset tokens are still in-memory (`resetTokens` object). They are not persisted in Supabase yet.

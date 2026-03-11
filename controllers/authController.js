@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { SECRET } = require('../middleware/auth');
 
-let resetTokens = {};
+const resetTokens = {};
 
 class AuthController {
     static async signup(req, res) {
@@ -20,10 +20,12 @@ class AuthController {
                 website
             } = req.body;
 
-            // 1️⃣ Check empty fields
+            // Normalize email - trim and lowercase
+            const normalizedEmail = (email || '').trim().toLowerCase();
+
             if (
                 !name ||
-                !email ||
+                !normalizedEmail ||
                 !password ||
                 !profession ||
                 !businessName ||
@@ -35,19 +37,16 @@ class AuthController {
                 return res.status(400).json({ error: 'All fields are required' });
             }
 
-            // 2️⃣ Email validation
             const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailPattern.test(email)) {
+            if (!emailPattern.test(normalizedEmail)) {
                 return res.status(400).json({ error: 'Invalid email format' });
             }
 
-            // 3️⃣ Phone validation (10 digits)
             const phonePattern = /^[0-9]{10}$/;
             if (!phonePattern.test(businessPhone)) {
                 return res.status(400).json({ error: 'Phone number must be 10 digits' });
             }
 
-            // 4️⃣ Password strength
             const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
             if (!passwordPattern.test(password)) {
                 return res.status(400).json({
@@ -55,16 +54,15 @@ class AuthController {
                 });
             }
 
-            // 5️⃣ Check if email already exists
-            if (User.findByEmail(email)) {
+            const existingUser = await User.findByEmail(normalizedEmail);
+            if (existingUser) {
                 return res.status(400).json({ error: 'User already exists' });
             }
 
-            // 6️⃣ Hash password and create user
             const hashedPassword = User.hashPassword(password);
-            const newUser = User.create({
+            await User.create({
                 name,
-                email,
+                email: normalizedEmail,
                 password: hashedPassword,
                 profession,
                 businessName,
@@ -74,10 +72,13 @@ class AuthController {
                 website
             });
 
-            res.json({ success: true });
+            return res.json({ success: true });
         } catch (err) {
-            console.error('Signup error:', err);
-            res.status(500).json({ error: 'Server error' });
+            console.error('❌ Signup error:', err);
+            console.error('Error message:', err.message);
+            console.error('Error code:', err.code);
+            console.error('Full error:', JSON.stringify(err, null, 2));
+            return res.status(500).json({ error: 'Server error: ' + err.message });
         }
     }
 
@@ -85,54 +86,61 @@ class AuthController {
         try {
             const { email, password } = req.body;
 
-            const user = User.findByEmail(email);
+            // Normalize email - trim and lowercase
+            const normalizedEmail = (email || '').trim().toLowerCase();
+
+            console.log('🔍 Login attempt for email:', normalizedEmail);
+            const user = await User.findByEmail(normalizedEmail);
             if (!user) {
-                return res.json({ error: 'User not found' });
+                console.error('❌ User not found:', normalizedEmail);
+                return res.status(404).json({ error: 'User not found' });
             }
 
-            const valid = User.validatePassword(password, user.password);
-            if (!valid) {
-                return res.json({ error: 'Invalid password' });
+            console.log('✓ User found:', user.email);
+
+            const isValid = User.validatePassword(password, user.password);
+            if (!isValid) {
+                return res.status(401).json({ error: 'Invalid password' });
             }
 
             const token = jwt.sign({ id: user.id }, SECRET);
-            res.json({
+            return res.json({
                 success: true,
                 token,
+                name: user.name,
                 profession: user.profession,
                 businessName: user.businessName
             });
         } catch (err) {
             console.error('Login error:', err);
-            res.status(500).json({ error: 'Server error' });
+            return res.status(500).json({ error: 'Server error' });
         }
     }
 
-    static forgotPassword(req, res) {
+    static async forgotPassword(req, res) {
         try {
             const { email } = req.body;
-            const user = User.findByEmail(email);
+            const user = await User.findByEmail(email);
 
             if (!user) {
                 return res.status(404).json({ message: 'Email not found' });
             }
 
             const token = crypto.randomBytes(32).toString('hex');
-            const expiry = Date.now() + 15 * 60 * 1000; // 15 minutes
+            const expiry = Date.now() + 15 * 60 * 1000;
             resetTokens[token] = { email, expiry };
 
-            const resetLink = `/reset?token=${token}`;
-            res.json({
+            return res.json({
                 message: 'Reset link generated',
-                resetLink
+                resetLink: `/reset?token=${token}`
             });
         } catch (err) {
             console.error('Forgot password error:', err);
-            res.status(500).json({ error: 'Server error' });
+            return res.status(500).json({ error: 'Server error' });
         }
     }
 
-    static resetPassword(req, res) {
+    static async resetPassword(req, res) {
         try {
             const { token, newPassword } = req.body;
             const tokenData = resetTokens[token];
@@ -146,19 +154,19 @@ class AuthController {
                 return res.status(400).json({ message: 'Token expired. Please try again.' });
             }
 
-            const user = User.findByEmail(tokenData.email);
+            const user = await User.findByEmail(tokenData.email);
             if (!user) {
                 return res.status(404).json({ message: 'User not found' });
             }
 
             const hashedPassword = User.hashPassword(newPassword);
-            User.update(user.id, { password: hashedPassword });
+            await User.update(user.id, { password: hashedPassword });
 
             delete resetTokens[token];
-            res.json({ message: 'Password reset successful' });
+            return res.json({ message: 'Password reset successful' });
         } catch (err) {
             console.error('Reset password error:', err);
-            res.status(500).json({ error: 'Server error' });
+            return res.status(500).json({ error: 'Server error' });
         }
     }
 }

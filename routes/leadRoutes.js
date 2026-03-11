@@ -1,8 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const fs = require("fs");
-const path = require("path");
 const XLSX = require("xlsx");
+const Lead = require("../models/Lead");
 
 // Test route to verify router loads
 router.get("/test", (req, res) => {
@@ -13,12 +12,9 @@ router.get("/test", (req, res) => {
 });
 
 // Export route - generates Excel file
-router.get("/export", (req, res) => {
+router.get("/export", async (req, res) => {
     try {
-        // Read leads from JSON file
-        const leadsPath = path.join(__dirname, "../data/leads.json");
-        const leadsData = fs.readFileSync(leadsPath, "utf8");
-        const leads = JSON.parse(leadsData);
+        const leads = await Lead.getAll();
 
         // Create a new workbook
         const workbook = XLSX.utils.book_new();

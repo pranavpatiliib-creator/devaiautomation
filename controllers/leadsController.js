@@ -1,9 +1,9 @@
 const Lead = require('../models/Lead');
 
 class LeadsController {
-    static getLeads(req, res) {
+    static async getLeads(req, res) {
         try {
-            const userLeads = Lead.findByUserId(req.user.id);
+            const userLeads = await Lead.findByUserId(req.user.id);
             res.json(userLeads);
         } catch (err) {
             console.error('Get leads error:', err);
@@ -11,11 +11,16 @@ class LeadsController {
         }
     }
 
-    static addLead(req, res) {
+    static async addLead(req, res) {
         try {
             const { name, phone, service } = req.body;
 
-            const newLead = Lead.create({
+            // Validate required fields
+            if (!name || !phone || !service) {
+                return res.status(400).json({ error: 'name, phone, and service are required' });
+            }
+
+            const newLead = await Lead.create({
                 userId: req.user.id,
                 name,
                 phone,
@@ -31,17 +36,17 @@ class LeadsController {
         }
     }
 
-    static updateLead(req, res) {
+    static async updateLead(req, res) {
         try {
             const id = parseInt(req.params.id);
             const { status } = req.body;
 
-            const lead = Lead.findById(id);
-            if (!lead || lead.userId !== req.user.id) {
+            const lead = await Lead.findById(id);
+            if (!lead || Number(lead.userId) !== Number(req.user.id)) {
                 return res.status(403).json({ error: 'Unauthorized' });
             }
 
-            Lead.update(id, { status });
+            await Lead.update(id, { status });
             res.json({ success: true });
         } catch (err) {
             console.error('Update lead error:', err);
@@ -49,17 +54,17 @@ class LeadsController {
         }
     }
 
-    static updateLeadNote(req, res) {
+    static async updateLeadNote(req, res) {
         try {
             const id = parseInt(req.params.id);
             const { note } = req.body;
 
-            const lead = Lead.findById(id);
-            if (!lead || lead.userId !== req.user.id) {
+            const lead = await Lead.findById(id);
+            if (!lead || Number(lead.userId) !== Number(req.user.id)) {
                 return res.status(403).json({ error: 'Unauthorized' });
             }
 
-            Lead.update(id, { note });
+            await Lead.update(id, { note });
             res.json({ success: true });
         } catch (err) {
             console.error('Update lead note error:', err);
@@ -67,16 +72,16 @@ class LeadsController {
         }
     }
 
-    static deleteLead(req, res) {
+    static async deleteLead(req, res) {
         try {
             const id = parseInt(req.params.id);
 
-            const lead = Lead.findById(id);
-            if (!lead || lead.userId !== req.user.id) {
+            const lead = await Lead.findById(id);
+            if (!lead || Number(lead.userId) !== Number(req.user.id)) {
                 return res.status(403).json({ error: 'Unauthorized' });
             }
 
-            Lead.delete(id);
+            await Lead.delete(id);
             res.json({ success: true });
         } catch (err) {
             console.error('Delete lead error:', err);

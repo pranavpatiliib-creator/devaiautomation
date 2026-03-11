@@ -1,38 +1,124 @@
-const db = require('../config/database');
+const supabase = require('../config/supabase');
 const bcrypt = require('bcryptjs');
 
+const USERS_TABLE = 'users';
+
+function mapUserRow(row) {
+    if (!row) return null;
+
+    return {
+        id: Number(row.id),
+        name: row.name,
+        email: row.email,
+        password: row.password,
+        profession: row.profession,
+        businessName: row.business_name,
+        businessPhone: row.business_phone,
+        location: row.location,
+        services: row.services,
+        website: row.website,
+        createdAt: row.created_at
+    };
+}
+
+function mapUserInsert(userData) {
+    return {
+        name: userData.name,
+        email: (userData.email || '').trim().toLowerCase(),  // Normalize email
+        password: userData.password,
+        profession: userData.profession,
+        business_name: userData.businessName,
+        business_phone: userData.businessPhone,
+        location: userData.location,
+        services: userData.services,
+        website: userData.website
+    };
+}
+
+function mapUserUpdates(updates) {
+    const mapped = {};
+
+    if (updates.name !== undefined) mapped.name = updates.name;
+    if (updates.email !== undefined) mapped.email = updates.email;
+    if (updates.password !== undefined) mapped.password = updates.password;
+    if (updates.profession !== undefined) mapped.profession = updates.profession;
+    if (updates.businessName !== undefined) mapped.business_name = updates.businessName;
+    if (updates.businessPhone !== undefined) mapped.business_phone = updates.businessPhone;
+    if (updates.location !== undefined) mapped.location = updates.location;
+    if (updates.services !== undefined) mapped.services = updates.services;
+    if (updates.website !== undefined) mapped.website = updates.website;
+
+    return mapped;
+}
+
 class User {
-    static findByEmail(email) {
-        const users = db.readUsers();
-        return users.find(u => u.email === email);
-    }
+    static async findByEmail(email) {
+        // Normalize email - trim and lowercase
+        const normalizedEmail = (email || '').trim().toLowerCase();
 
-    static findById(id) {
-        const users = db.readUsers();
-        return users.find(u => u.id === id);
-    }
+        console.log('🔍 Searching for user with email:', normalizedEmail);
 
-    static create(userData) {
-        const users = db.readUsers();
-        const newUser = {
-            id: Date.now(),
-            ...userData,
-            createdAt: new Date()
-        };
-        users.push(newUser);
-        db.writeUsers(users);
-        return newUser;
-    }
+        const { data, error } = await supabase
+            .from(USERS_TABLE)
+            .select('*')
+            .ilike('email', normalizedEmail)  // Case-insensitive search
+            .limit(1);
 
-    static update(id, updates) {
-        const users = db.readUsers();
-        const userIndex = users.findIndex(u => u.id === id);
-        if (userIndex !== -1) {
-            users[userIndex] = { ...users[userIndex], ...updates };
-            db.writeUsers(users);
-            return users[userIndex];
+        if (error) {
+            console.error('❌ Supabase query error:', error);
+            throw error;
         }
-        return null;
+
+        console.log('📊 Query result:', data);
+        return mapUserRow(data?.[0]);
+    }
+
+    static async findById(id) {
+        const { data, error } = await supabase
+            .from(USERS_TABLE)
+            .select('*')
+            .eq('id', Number(id))
+            .limit(1);
+
+        if (error) throw error;
+        return mapUserRow(data?.[0]);
+    }
+
+    static async create(userData) {
+        const row = mapUserInsert(userData);
+
+        console.log('📝 Inserting user:', row);
+
+        const { data, error } = await supabase
+            .from(USERS_TABLE)
+            .insert(row)
+            .select('*')
+            .single();
+
+        if (error) {
+            console.error('❌ Supabase insert error:', error);
+            throw error;
+        }
+
+        console.log('✓ User created in Supabase:', data);
+        return mapUserRow(data);
+    }
+
+    static async update(id, updates) {
+        const mappedUpdates = mapUserUpdates(updates);
+        if (Object.keys(mappedUpdates).length === 0) {
+            return this.findById(id);
+        }
+
+        const { data, error } = await supabase
+            .from(USERS_TABLE)
+            .update(mappedUpdates)
+            .eq('id', Number(id))
+            .select('*')
+            .maybeSingle();
+
+        if (error) throw error;
+        return mapUserRow(data);
     }
 
     static validatePassword(plainPassword, hashedPassword) {

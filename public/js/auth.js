@@ -5,7 +5,7 @@ async function signup() {
     const spinner = document.getElementById("spinner");
 
     const name = document.getElementById("name").value.trim();
-    const email = document.getElementById("email").value.trim();
+    const email = document.getElementById("email").value.trim().toLowerCase();
     const password = document.getElementById("password").value.trim();
     const profession = document.getElementById("profession").value.trim();
     const businessName = document.getElementById("businessName").value.trim();
@@ -85,8 +85,13 @@ async function signup() {
 }
 
 async function login() {
-    const email = document.getElementById("email").value;
+    const email = document.getElementById("email").value.trim().toLowerCase();
     const password = document.getElementById("password").value;
+
+    if (!email || !password) {
+        alert("Please enter email and password");
+        return;
+    }
 
     try {
         const data = await API.login(email, password);

@@ -51,45 +51,45 @@ class API {
 
     // Auth endpoints
     static async signup(data) {
-        return this.post('/signup', data);
+        return this.post('/api/signup', data);
     }
 
     static async login(email, password) {
-        return this.post('/login', { email, password });
+        return this.post('/api/login', { email, password });
     }
 
     static async forgotPassword(email) {
-        return this.post('/forgot-password', { email });
+        return this.post('/api/forgot-password', { email });
     }
 
     static async resetPassword(token, newPassword) {
-        return this.post('/reset-password', { token, newPassword });
+        return this.post('/api/reset-password', { token, newPassword });
     }
 
     // Leads endpoints
     static async getLeads(token) {
-        return this.get('/leads', token);
+        return this.get('/api/leads', token);
     }
 
     static async addLead(data, token) {
-        return this.post('/lead', data);
+        return this.post('/api/lead', data);
     }
 
     static async updateLead(id, status, token) {
-        return this.put(`/lead/${id}`, { status }, token);
+        return this.put(`/api/lead/${id}`, { status }, token);
     }
 
     static async updateLeadNote(id, note, token) {
-        return this.put(`/lead-note/${id}`, { note }, token);
+        return this.put(`/api/lead-note/${id}`, { note }, token);
     }
 
     static async deleteLead(id, token) {
-        return this.delete(`/lead/${id}`, token);
+        return this.delete(`/api/lead/${id}`, token);
     }
 
     // Public endpoints
     static async submitPublicLead(userId, name, phone, service) {
-        return this.post('/lead-public', {
+        return this.post('/api/lead-public', {
             userId,
             name,
             phone,

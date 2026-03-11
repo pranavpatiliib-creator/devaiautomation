@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const fs = require('fs');
-const path = require('path');
 const XLSX = require('xlsx');
 const LeadsController = require('../controllers/leadsController');
+const Lead = require('../models/Lead');
 const { verifyToken } = require('../middleware/auth');
 
 router.get('/leads', verifyToken, LeadsController.getLeads);
@@ -13,11 +12,9 @@ router.put('/lead-note/:id', verifyToken, LeadsController.updateLeadNote);
 router.delete('/lead/:id', verifyToken, LeadsController.deleteLead);
 
 // Export leads to Excel - accessible at /api/leads/export
-router.get('/leads/export', verifyToken, (req, res) => {
+router.get('/leads/export', verifyToken, async (req, res) => {
     try {
-        const leadsPath = path.join(__dirname, '../data/leads.json');
-        const leadsData = fs.readFileSync(leadsPath, 'utf8');
-        const leads = JSON.parse(leadsData);
+        const leads = await Lead.findByUserId(req.user.id);
 
         // Create workbook
         const workbook = XLSX.utils.book_new();
