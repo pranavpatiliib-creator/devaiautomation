@@ -175,3 +175,30 @@ a:hover {
         font-size: 16px;
     }
 }
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.75;
+    transform: none;
+    box-shadow: 0 2px 10px rgba(0, 123, 255, 0.15);
+}
+
+.submit-message {
+    min-height: 22px;
+    margin-top: 12px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.submit-message.info {
+    color: #1d4ed8;
+}
+
+.submit-message.success {
+    color: #15803d;
+}
+
+.submit-message.error {
+    color: #b91c1c;
+}

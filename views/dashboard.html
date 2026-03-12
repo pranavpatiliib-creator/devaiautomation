@@ -50,9 +50,24 @@
                 <button onclick="generateQR()">Generate QR Code</button>
                 <button onclick="downloadQR()">Download QR Code</button>
                 <div id="qrcode"></div>
-                <button onclick="exportLeads()">
-                    Export Leads
-                </button>
+                <div>
+                    <button onclick="toggleExportMenu()">Export Leads ▼</button>
+
+                    <div id="exportMenu" style="display:none; margin-top:10px;">
+
+                        <select id="status">
+                            <option value="">Select Status</option>
+                            <option value="new">New</option>
+                            <option value="contacted">Contacted</option>
+                            <option value="lost">Lost</option>
+                        </select>
+
+                        <input type="date" id="fromDate">
+                        <input type="date" id="toDate">
+
+                        <button onclick="exportLeads()">Download PDF</button>
+                    </div>
+                </div>
             </div>
             <div class="table-container">
                 <table>

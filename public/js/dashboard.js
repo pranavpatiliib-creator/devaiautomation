@@ -229,7 +229,37 @@ async function exportLeads() {
         alert("Failed to export leads: " + error.message);
     }
 }
+function toggleExportMenu() {
+    const menu = document.getElementById("exportMenu");
+    menu.style.display = menu.style.display === "none" ? "block" : "none";
+}
 
+function exportLeads() {
+
+    const status = document.getElementById("status").value;
+    const fromDate = document.getElementById("fromDate").value;
+    const toDate = document.getElementById("toDate").value;
+
+    const token = localStorage.getItem("token");
+
+    const url = `/api/leads/export/pdf?status=${status}&fromDate=${fromDate}&toDate=${toDate}`;
+
+    fetch(url, {
+        headers: {
+            Authorization: token
+        }
+    })
+        .then(response => response.blob())
+        .then(blob => {
+
+            const link = document.createElement("a");
+            link.href = window.URL.createObjectURL(blob);
+            link.download = "leads-report.pdf";
+            link.click();
+
+        })
+        .catch(err => console.error(err));
+}
 // Run on page load if dashboard elements exist
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {

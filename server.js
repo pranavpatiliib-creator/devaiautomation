@@ -16,7 +16,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const authRoutes = require('./src/routes/auth');
 const leadsRoutes = require('./src/routes/leads');
 const publicRoutes = require('./src/routes/public');
-
+const rateLimiter = require('./src/middleware/rateLimiter');
 // Register routes
 app.use('/api', authRoutes);
 app.use('/api', leadsRoutes);
@@ -72,10 +72,13 @@ app.use((err, req, res, next) => {
 
 
 // ================= SERVER START =================
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`✓ Server running on port ${PORT}`);
-    console.log(`✓ API: http://localhost:${PORT}`);
-    console.log(`✓ Frontend: http://localhost:${PORT}/`);
+if (require.main === module) {
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => {
+        console.log('Server running on port ' + PORT);
+        console.log('API: http://localhost:' + PORT);
+        console.log('Frontend: http://localhost:' + PORT + '/');
+    });
+}
 
-});
+module.exports = app;
