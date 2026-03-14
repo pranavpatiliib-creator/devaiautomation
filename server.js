@@ -22,6 +22,11 @@ app.use('/api', authRoutes);
 app.use('/api', leadsRoutes);
 app.use('/api', publicRoutes);
 
+const webhookRoutes = require('./src/routes/webhookRoutes');
+const inboxRoutes = require('./src/routes/inboxRoutes');
+app.use('/api/webhooks', webhookRoutes);
+app.use('/api/inbox', inboxRoutes);
+
 // ================= SERVE VIEWS =================
 // Page routes (must be after API routes to avoid conflicts)
 app.get('/', (req, res) => {

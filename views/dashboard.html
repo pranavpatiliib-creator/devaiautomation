@@ -2,9 +2,10 @@
 <html>
 
 <head>
-    <title>Dashboard</title>
+    <title>Dashboard of Devai </title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/css/dashboard.css">
+    <link rel="stylesheet" href="/css/inbox.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 
@@ -35,6 +36,40 @@
             <div class="card">
                 <h3>Converted Leads</h3>
                 <span id="convertedLeads">0</span>
+            </div>
+        </div>
+
+        <div class="card" id="connectPlatformsCard" style="max-width: 100%; margin: 30px auto; padding-bottom: 30px;">
+            <h3>Connect Messaging Platforms</h3>
+            <p style="color: #6b7280; font-size: 14px; margin-bottom: 20px;">Link your accounts to start receiving leads and messages directly in your dashboard.</p>
+            <div id="platformButtons" style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <button id="btnConnectFb" onclick="connectFacebook()" style="flex: 1; background: #1877f2; color: white;">🔗 Connect Facebook &amp; Instagram</button>
+                <button id="btnConnectWa" onclick="connectWhatsApp()" style="flex: 1; background: #25d366; color: white;">🔗 Connect WhatsApp Business</button>
+            </div>
+            <div id="connectedStatus" style="display: none; margin-top: 15px;"></div>
+        </div>
+
+        <div class="card inbox-card" style="max-width: 100%; margin: 30px auto;">
+            <h3>Unified Social Inbox</h3>
+            <div class="inbox-container">
+                <div class="inbox-sidebar" id="conversationList">
+                    <p class="loading-text">Loading conversations...</p>
+                </div>
+                <div class="inbox-chat" id="chatWindow" style="display: none;">
+                    <div class="chat-header" id="chatHeader">
+                        <span id="chatPlatformIcon">💬</span>
+                        <strong id="chatCustomerName">Select a conversation</strong>
+                    </div>
+                    <div class="chat-messages" id="chatMessages">
+                        <!-- Messages go here -->
+                    </div>
+                    <div class="chat-input">
+                        <input type="text" id="replyMessage" placeholder="Type your reply..."
+                            onkeypress="if(event.key === 'Enter') sendReply()">
+                        <button onclick="sendReply()"
+                            style="width: 80px; margin-top: 0; margin-left: 10px;">Send</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -90,6 +125,7 @@
     <script src="/js/api.js"></script>
     <script src="/js/auth.js"></script>
     <script src="/js/dashboard.js"></script>
+    <script src="/js/inbox.js"></script>
     <script src="/js/qrcode.min.js"></script>
     <script src="/js/html2canvas.min.js"></script>
 </body>
