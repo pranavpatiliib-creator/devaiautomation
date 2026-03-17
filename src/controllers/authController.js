@@ -1,9 +1,15 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+
 const User = require('../models/User');
 const { SECRET } = require('../middleware/auth');
+const { getOrCreateTenantForUser } = require('../services/tenantService');
 
 const resetTokens = {};
+
+function normalizeEmail(email) {
+    return String(email || '').trim().toLowerCase();
+}
 
 class AuthController {
     static async signup(req, res) {
@@ -20,8 +26,7 @@ class AuthController {
                 website
             } = req.body;
 
-            // Normalize email - trim and lowercase
-            const normalizedEmail = (email || '').trim().toLowerCase();
+            const normalizedEmail = normalizeEmail(email);
 
             if (
                 !name ||
@@ -60,7 +65,8 @@ class AuthController {
             }
 
             const hashedPassword = User.hashPassword(password);
-            await User.create({
+
+            const newUser = await User.create({
                 name,
                 email: normalizedEmail,
                 password: hashedPassword,
@@ -72,12 +78,18 @@ class AuthController {
                 website
             });
 
-            return res.json({ success: true });
+            const tenant = await getOrCreateTenantForUser(newUser, {
+                business_name: businessName,
+                industry: profession,
+                whatsapp_number: businessPhone
+            });
+
+            return res.json({
+                success: true,
+                tenantId: tenant.id
+            });
         } catch (err) {
-            console.error('❌ Signup error:', err);
-            console.error('Error message:', err.message);
-            console.error('Error code:', err.code);
-            console.error('Full error:', JSON.stringify(err, null, 2));
+            console.error('Signup error:', err);
             return res.status(500).json({ error: 'Server error: ' + err.message });
         }
     }
@@ -85,31 +97,44 @@ class AuthController {
     static async login(req, res) {
         try {
             const { email, password } = req.body;
+            const normalizedEmail = normalizeEmail(email);
 
-            // Normalize email - trim and lowercase
-            const normalizedEmail = (email || '').trim().toLowerCase();
-
-            console.log('🔍 Login attempt for email:', normalizedEmail);
-            const user = await User.findByEmail(normalizedEmail);
-            if (!user) {
-                console.error('❌ User not found:', normalizedEmail);
-                return res.status(404).json({ error: 'User not found' });
+            if (!normalizedEmail || !password) {
+                return res.status(400).json({ error: 'Email and password are required' });
             }
 
-            console.log('✓ User found:', user.email);
+            const user = await User.findByEmail(normalizedEmail);
+            if (!user) {
+                return res.status(404).json({ error: 'User not found' });
+            }
 
             const isValid = User.validatePassword(password, user.password);
             if (!isValid) {
                 return res.status(401).json({ error: 'Invalid password' });
             }
 
-            const token = jwt.sign({ id: user.id }, SECRET);
+            const tenant = await getOrCreateTenantForUser(user, {
+                business_name: user.businessName,
+                industry: user.profession,
+                whatsapp_number: user.businessPhone
+            });
+
+            const token = jwt.sign(
+                {
+                    id: user.id,
+                    tenantId: tenant.id
+                },
+                SECRET,
+                { expiresIn: '7d' }
+            );
+
             return res.json({
                 success: true,
                 token,
+                tenantId: tenant.id,
                 name: user.name,
                 profession: user.profession,
-                businessName: user.businessName
+                businessName: tenant.business_name || user.businessName
             });
         } catch (err) {
             console.error('Login error:', err);
@@ -119,8 +144,8 @@ class AuthController {
 
     static async forgotPassword(req, res) {
         try {
-            const { email } = req.body;
-            const user = await User.findByEmail(email);
+            const normalizedEmail = normalizeEmail(req.body.email);
+            const user = await User.findByEmail(normalizedEmail);
 
             if (!user) {
                 return res.status(404).json({ message: 'Email not found' });
@@ -128,7 +153,7 @@ class AuthController {
 
             const token = crypto.randomBytes(32).toString('hex');
             const expiry = Date.now() + 15 * 60 * 1000;
-            resetTokens[token] = { email, expiry };
+            resetTokens[token] = { email: normalizedEmail, expiry };
 
             return res.json({
                 message: 'Reset link generated',

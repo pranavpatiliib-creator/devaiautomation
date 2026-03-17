@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const XLSX = require('xlsx');
-const LeadsController = require('../controllers/leadsController');
-const Lead = require('../models/Lead');
-const User = require('../models/User');
-const { verifyToken } = require('../middleware/auth');
 const PDFDocument = require('pdfkit');
+
+const supabase = require('../config/supabase');
+const { verifyToken } = require('../middleware/auth');
+const { requireTenant } = require('../middleware/tenant');
 
 function normalizeStatus(value) {
     return String(value || '').trim().toLowerCase();
@@ -35,16 +35,6 @@ function formatLeadDate(value) {
     return date.toLocaleDateString('en-IN');
 }
 
-function getBusinessDisplayName(user, userId) {
-    const businessName = (user?.businessName || '').trim();
-    if (businessName) return businessName;
-
-    const ownerName = (user?.name || '').trim();
-    if (ownerName) return `${ownerName}'s Business`;
-
-    return `Business ${userId}`;
-}
-
 function drawLeadsTable(doc, leads) {
     const tableStartX = doc.page.margins.left;
     const tableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
@@ -57,15 +47,14 @@ function drawLeadsTable(doc, leads) {
         { key: 'phone', label: 'Phone', width: tableWidth * 0.18 },
         { key: 'service', label: 'Service', width: tableWidth * 0.24 },
         { key: 'status', label: 'Status', width: tableWidth * 0.14 },
-        { key: 'createdAt', label: 'Date', width: tableWidth * 0.22 }
+        { key: 'created_at', label: 'Date', width: tableWidth * 0.22 }
     ];
 
-    // Keep table width exact after percentage rounding.
     const widthUsed = columns.slice(0, -1).reduce((sum, col) => sum + col.width, 0);
     columns[columns.length - 1].width = tableWidth - widthUsed;
 
     function getCellValue(lead, key) {
-        if (key === 'createdAt') return formatLeadDate(lead.createdAt);
+        if (key === 'created_at') return formatLeadDate(lead.created_at);
         return String(lead[key] || '-');
     }
 
@@ -150,50 +139,245 @@ function drawLeadsTable(doc, leads) {
     }
 }
 
+async function getLeadById(tenantId, leadId) {
+    const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('id', leadId)
+        .maybeSingle();
 
-router.get('/leads', verifyToken, LeadsController.getLeads);
-router.post('/lead', verifyToken, LeadsController.addLead);
-router.put('/lead/:id', verifyToken, LeadsController.updateLead);
-router.put('/lead-note/:id', verifyToken, LeadsController.updateLeadNote);
-router.delete('/lead/:id', verifyToken, LeadsController.deleteLead);
+    if (error) throw error;
+    return data;
+}
 
-// Export leads to Excel - accessible at /api/leads/export
-router.get('/leads/export', verifyToken, async (req, res) => {
+router.use(verifyToken, requireTenant);
+
+router.get('/leads', async (req, res) => {
     try {
-        const leads = await Lead.findByUserId(req.user.id);
+        const { status, search } = req.query;
+        const normalizedStatus = normalizeStatus(status);
+        const term = String(search || '')
+            .replace(/[^a-zA-Z0-9@._+\-\s]/g, ' ')
+            .trim();
 
-        // Create workbook
-        const workbook = XLSX.utils.book_new();
-        const worksheet = XLSX.utils.json_to_sheet(leads);
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Leads');
+        let query = supabase
+            .from('leads')
+            .select('id,customer_id,name,phone,service,status,note,created_at')
+            .eq('tenant_id', req.tenantId)
+            .order('created_at', { ascending: false });
 
-        // Generate buffer
-        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        if (normalizedStatus) {
+            query = query.ilike('status', normalizedStatus);
+        }
 
-        // Send file
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="leads_${Date.now()}.xlsx"`);
-        res.send(buffer);
+        if (term) {
+            query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%,service.ilike.%${term}%`);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        return res.json(data || []);
     } catch (error) {
-        console.error('Export error:', error);
-        res.status(500).json({ error: 'Failed to export leads', message: error.message });
+        console.error('Get leads error:', error);
+        return res.status(500).json({ error: 'Failed to load leads' });
     }
 });
-router.get('/leads/export/pdf', verifyToken, async (req, res) => {
+
+router.post('/lead', async (req, res) => {
+    try {
+        const { name, phone, service, customer_id } = req.body;
+
+        if (!name || !phone || !service) {
+            return res.status(400).json({ error: 'name, phone, and service are required' });
+        }
+
+        const { data, error } = await supabase
+            .from('leads')
+            .insert({
+                tenant_id: req.tenantId,
+                customer_id: customer_id || null,
+                name,
+                phone,
+                service,
+                status: 'new',
+                note: ''
+            })
+            .select('id,customer_id,name,phone,service,status,note,created_at')
+            .single();
+
+        if (error) throw error;
+
+        return res.status(201).json({ success: true, lead: data });
+    } catch (error) {
+        console.error('Add lead error:', error);
+        return res.status(500).json({ error: 'Failed to add lead' });
+    }
+});
+
+router.put('/lead/:id', async (req, res) => {
+    try {
+        const { status } = req.body;
+        const leadId = req.params.id;
+
+        const lead = await getLeadById(req.tenantId, leadId);
+        if (!lead) {
+            return res.status(404).json({ error: 'Lead not found' });
+        }
+
+        const { error } = await supabase
+            .from('leads')
+            .update({ status })
+            .eq('tenant_id', req.tenantId)
+            .eq('id', leadId);
+
+        if (error) throw error;
+
+        return res.json({ success: true });
+    } catch (error) {
+        console.error('Update lead error:', error);
+        return res.status(500).json({ error: 'Failed to update lead' });
+    }
+});
+
+router.put('/lead-note/:id', async (req, res) => {
+    try {
+        const { note } = req.body;
+        const leadId = req.params.id;
+
+        const lead = await getLeadById(req.tenantId, leadId);
+        if (!lead) {
+            return res.status(404).json({ error: 'Lead not found' });
+        }
+
+        const { error } = await supabase
+            .from('leads')
+            .update({ note: note || '' })
+            .eq('tenant_id', req.tenantId)
+            .eq('id', leadId);
+
+        if (error) throw error;
+
+        return res.json({ success: true });
+    } catch (error) {
+        console.error('Update lead note error:', error);
+        return res.status(500).json({ error: 'Failed to update lead note' });
+    }
+});
+
+router.put('/leads/:id', async (req, res) => {
+    try {
+        const leadId = req.params.id;
+        const updates = {};
+
+        if (req.body.status !== undefined) {
+            updates.status = req.body.status;
+        }
+        if (req.body.note !== undefined) {
+            updates.note = req.body.note;
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({ error: 'No fields provided for update' });
+        }
+
+        const lead = await getLeadById(req.tenantId, leadId);
+        if (!lead) {
+            return res.status(404).json({ error: 'Lead not found' });
+        }
+
+        const { data, error } = await supabase
+            .from('leads')
+            .update(updates)
+            .eq('tenant_id', req.tenantId)
+            .eq('id', leadId)
+            .select('id,customer_id,name,phone,service,status,note,created_at')
+            .maybeSingle();
+
+        if (error) throw error;
+
+        return res.json({ success: true, lead: data });
+    } catch (error) {
+        console.error('Update lead record error:', error);
+        return res.status(500).json({ error: 'Failed to update lead' });
+    }
+});
+
+router.delete('/lead/:id', async (req, res) => {
+    try {
+        const leadId = req.params.id;
+        const lead = await getLeadById(req.tenantId, leadId);
+        if (!lead) {
+            return res.status(404).json({ error: 'Lead not found' });
+        }
+
+        const { error } = await supabase
+            .from('leads')
+            .delete()
+            .eq('tenant_id', req.tenantId)
+            .eq('id', leadId);
+
+        if (error) throw error;
+        return res.json({ success: true });
+    } catch (error) {
+        console.error('Delete lead error:', error);
+        return res.status(500).json({ error: 'Failed to delete lead' });
+    }
+});
+
+router.get('/leads/export', async (req, res) => {
+    try {
+        const { data: leads, error } = await supabase
+            .from('leads')
+            .select('id,name,phone,service,status,note,created_at')
+            .eq('tenant_id', req.tenantId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        const workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.json_to_sheet(leads || []);
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Leads');
+
+        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="leads_${Date.now()}.xlsx"`);
+        return res.send(buffer);
+    } catch (error) {
+        console.error('Export leads error:', error);
+        return res.status(500).json({ error: 'Failed to export leads' });
+    }
+});
+
+router.get('/leads/export/pdf', async (req, res) => {
     try {
         const { status, fromDate, toDate } = req.query;
         const normalizedStatus = normalizeStatus(status);
         const fromBoundary = parseDateBoundary(fromDate, false);
         const toBoundary = parseDateBoundary(toDate, true);
 
-        const [leads, user] = await Promise.all([
-            Lead.findByUserId(req.user.id),
-            User.findById(req.user.id)
+        const [leadsResponse, tenantResponse] = await Promise.all([
+            supabase
+                .from('leads')
+                .select('id,name,phone,service,status,note,created_at')
+                .eq('tenant_id', req.tenantId)
+                .order('created_at', { ascending: false }),
+            supabase
+                .from('tenants')
+                .select('business_name')
+                .eq('id', req.tenantId)
+                .maybeSingle()
         ]);
 
-        const filteredLeads = leads.filter((lead) => {
+        if (leadsResponse.error) throw leadsResponse.error;
+        if (tenantResponse.error) throw tenantResponse.error;
+
+        const allLeads = leadsResponse.data || [];
+        const filteredLeads = allLeads.filter((lead) => {
             const leadStatus = normalizeStatus(lead.status);
-            const leadDate = lead.createdAt ? new Date(lead.createdAt) : null;
+            const leadDate = lead.created_at ? new Date(lead.created_at) : null;
 
             if (normalizedStatus && leadStatus !== normalizedStatus) return false;
             if (fromBoundary && (!leadDate || leadDate < fromBoundary)) return false;
@@ -202,10 +386,11 @@ router.get('/leads/export/pdf', verifyToken, async (req, res) => {
             return true;
         });
 
-        const businessName = getBusinessDisplayName(user, req.user.id);
         const statusLabel = normalizedStatus
             ? normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1)
             : 'All';
+
+        const businessName = tenantResponse.data?.business_name || 'LeadFlow AI';
 
         const doc = new PDFDocument({
             margin: 40,
@@ -242,7 +427,7 @@ router.get('/leads/export/pdf', verifyToken, async (req, res) => {
         console.error('PDF export error:', error);
 
         if (!res.headersSent) {
-            res.status(500).json({ error: 'Failed to export PDF' });
+            return res.status(500).json({ error: 'Failed to export PDF' });
         }
     }
 });

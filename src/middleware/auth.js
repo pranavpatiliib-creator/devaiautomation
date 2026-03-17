@@ -1,6 +1,10 @@
 const jwt = require('jsonwebtoken');
 
-const SECRET = process.env.JWT_SECRET || 'mysecretkey';
+const SECRET = process.env.JWT_SECRET;
+
+if (!SECRET) {
+    throw new Error('Missing JWT_SECRET in environment');
+}
 
 function verifyToken(req, res, next) {
     const authHeader = req.headers.authorization || '';

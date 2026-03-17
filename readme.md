@@ -1,4 +1,29 @@
-# LeadFlow AI - Supabase Migration README
+# LeadFlow AI 🚀
+
+[![Vercel](https://thereveriecdn.xyz/vc-dy)](https://vercel.com/new/clone?repository-url=https://github.com/user/leadflow-ai)
+
+**AI-Powered Lead Management & Social Inbox Platform**
+
+LeadFlow AI is a full-stack CRM platform for businesses to capture leads via custom forms, manage them in a dashboard, handle customer conversations across WhatsApp/Facebook/Instagram in a unified inbox, with AI auto-replies and automation.
+
+## ✨ Features
+
+- **Lead Capture**: Public forms with QR codes/links
+- **Dashboard**: CRUD leads, status/notes, PDF/Excel export
+- **Unified Social Inbox**: WhatsApp, FB Messenger, Instagram DMs
+- **AI Automation**: Auto-replies, message dispatching
+- **Integrations**: Meta API, Twilio, Supabase
+- **Realtime**: Live chat updates
+- **Secure**: JWT auth, rate limiting, Supabase RLS-ready
+- **Deploy**: Vercel serverless ready
+
+## 🏗️ Tech Stack
+
+- **Backend**: Node.js/Express, Supabase Postgres
+- **Frontend**: Vanilla HTML/CSS/JS
+- **Database**: Users, Leads, Conversations, Messages, Integrations
+- **APIs**: Meta (FB/IG/WA), Twilio SMS/Voice
+
 
 This project now uses Supabase (Postgres) instead of local JSON files for users and leads.
 
@@ -24,11 +49,47 @@ Main files changed:
 - `middleware/auth.js`
 - `database/schema.sql`
 
-## 2. Prerequisites
+## 🚀 Quick Start
 
-- Node.js 18+ recommended
-- npm
-- A Supabase project
+### Prerequisites
+
+- Node.js 18+
+- npm/yarn
+- [Supabase Account](https://supabase.com) (free tier OK)
+
+### 1. Clone & Install
+
+```bash
+git clone <repo>
+cd leadflow-ai
+npm install
+```
+
+### 2. Environment Variables
+
+Copy `.env.example` to `.env` and fill:
+
+```env
+PORT=5000
+JWT_SECRET=your-super-secret-jwt-key
+SUPABASE_URL=your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key  # Backend secret key!
+```
+
+### 3. Setup Database
+
+1. Run `src/database/schema.sql` in Supabase SQL Editor
+2. Tables: users, leads, integrations, facebook_accounts, conversations, messages
+
+### 4. Run Locally
+
+```bash
+npm run dev  # nodemon
+# or
+npm start
+```
+
+Open [http://localhost:5000](http://localhost:5000)
 
 ## 3. Environment Variables
 
@@ -39,12 +100,12 @@ PORT=5000
 NODE_ENV=development
 JWT_SECRET=your_jwt_secret
 SUPABASE_URL=https://your-project-ref.supabase.co
-SUPABASE_KEY=your_supabase_service_role_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 ```
 
 Important:
 
-- `SUPABASE_KEY` should be a backend secret key (service role) for server-side operations.
+- `SUPABASE_SERVICE_ROLE_KEY` should be a backend secret key (service role) for server-side operations.
 - Do not expose this key in browser/frontend code.
 
 ## 4. Create Supabase Tables
@@ -78,29 +139,41 @@ Server starts at:
 
 - `http://localhost:5000`
 
-## 6. API Endpoints (Current Backend)
+## 📋 API Endpoints
 
-All routes are mounted under `/api`.
+All under `/api` (JSON body, JWT in `Authorization: Bearer <token>`)
 
-Authentication:
+### Auth
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/signup` | Create user |
+| POST | `/login` | JWT login |
+| POST | `/forgot-password` | Send reset email |
+| POST | `/reset-password` | Reset via token |
 
-- `POST /api/signup`
-- `POST /api/login`
-- `POST /api/forgot-password`
-- `POST /api/reset-password`
+### Leads (Auth required)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/leads` | List user leads |
+| POST | `/lead` | Create lead |
+| PUT | `/lead/:id` | Update lead/status |
+| PUT | `/lead-note/:id` | Add note |
+| DELETE | `/lead/:id` | Delete |
+| GET | `/leads/export` | PDF/Excel |
 
-Leads (JWT required):
+### Public
+- POST `/lead-public` - Anonymous lead submit
 
-- `GET /api/leads`
-- `POST /api/lead`
-- `PUT /api/lead/:id`
-- `PUT /api/lead-note/:id`
-- `DELETE /api/lead/:id`
-- `GET /api/leads/export`
+### Social Inbox
+- POST `/inbox/reply` - Send message
+- GET `/inbox/conversations` - List threads
 
-Public:
+### Webhooks
+- POST `/webhooks/meta` - Meta (FB/IG/WA) incoming
 
-- `POST /api/lead-public`
+### Facebook
+- GET `/facebook/oauth` - OAuth init
+- POST `/facebook/accounts` - Connect page
 
 ## 7. Supabase Data Mapping
 
@@ -166,7 +239,7 @@ After setup, test this flow:
 
 ## 11. Troubleshooting
 
-### `Missing SUPABASE_URL or SUPABASE_KEY in environment`
+### `Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment`
 
 - Check `.env` exists at project root.
 - Restart server after updating `.env`.
@@ -177,7 +250,7 @@ After setup, test this flow:
 
 ### Supabase permission/RLS errors
 
-- Use a server-side secret key in `SUPABASE_KEY`.
+- Use a server-side secret key in `SUPABASE_SERVICE_ROLE_KEY`.
 - Ensure your table policies/permissions allow backend operations.
 
 ### `Invalid token`
@@ -185,7 +258,58 @@ After setup, test this flow:
 - Re-login to get a fresh JWT.
 - Ensure request header is either raw token or `Bearer <token>`.
 
-## 12. Notes
+## 🔗 Integrations Setup
 
-- `config/database.js` and local JSON files can be kept as legacy backups, but active runtime now uses Supabase models.
-- Password reset tokens are still in-memory (`resetTokens` object). They are not persisted in Supabase yet.
+### Meta (Facebook/Instagram/WhatsApp)
+1. Dashboard → Connect Facebook & Instagram / WhatsApp Business
+2. Follow OAuth flow
+3. Grants: pages_messaging, whatsapp_business_messaging, instagram_basic
+
+### Supabase
+- Service role key for server ops (bypass RLS)
+
+## 📁 Project Structure
+
+```
+leadflow-ai/
+├── server.js           # Express app
+├── public/             # Static CSS/JS
+├── views/              # HTML pages
+├── src/
+│   ├── config/         # Supabase, Meta, Twilio
+│   ├── controllers/    # Route logic
+│   ├── models/         # Supabase ops
+│   ├── routes/         # API routes
+│   ├── services/       # AI, inbox, integrations
+│   └── middleware/     # Auth, rate limit
+├── src/database/schema.sql
+└── vercel.json         # Serverless deploy
+```
+
+## ☁️ Deployment (Vercel)
+
+```bash
+npm i -g vercel
+vercel --prod
+```
+
+Config auto-handles via vercel.json (api/index.js as serverless func).
+
+## 🤝 Contributing
+
+1. Fork & PR
+2. Follow existing style (vanilla JS, async/await)
+3. Test changes: `npm run dev`
+
+## ❓ Troubleshooting
+
+- **No Supabase tables**: Run schema.sql
+- **Invalid JWT**: Check `JWT_SECRET`, re-login
+- **Webhook 403**: Verify Meta app tokens/permissions
+- **CORS issues**: Local dev only; prod via Vercel
+
+## 📄 License
+
+ISC
+
+

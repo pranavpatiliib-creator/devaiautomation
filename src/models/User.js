@@ -7,7 +7,7 @@ function mapUserRow(row) {
     if (!row) return null;
 
     return {
-        id: Number(row.id),
+        id: row.id,
         name: row.name,
         email: row.email,
         password: row.password,
@@ -24,14 +24,14 @@ function mapUserRow(row) {
 function mapUserInsert(userData) {
     return {
         name: userData.name,
-        email: (userData.email || '').trim().toLowerCase(),  // Normalize email
+        email: String(userData.email || '').trim().toLowerCase(),
         password: userData.password,
-        profession: userData.profession,
-        business_name: userData.businessName,
-        business_phone: userData.businessPhone,
-        location: userData.location,
-        services: userData.services,
-        website: userData.website
+        profession: userData.profession || null,
+        business_name: userData.businessName || null,
+        business_phone: userData.businessPhone || null,
+        location: userData.location || null,
+        services: userData.services || null,
+        website: userData.website || null
     };
 }
 
@@ -39,7 +39,7 @@ function mapUserUpdates(updates) {
     const mapped = {};
 
     if (updates.name !== undefined) mapped.name = updates.name;
-    if (updates.email !== undefined) mapped.email = updates.email;
+    if (updates.email !== undefined) mapped.email = String(updates.email).trim().toLowerCase();
     if (updates.password !== undefined) mapped.password = updates.password;
     if (updates.profession !== undefined) mapped.profession = updates.profession;
     if (updates.businessName !== undefined) mapped.business_name = updates.businessName;
@@ -53,41 +53,31 @@ function mapUserUpdates(updates) {
 
 class User {
     static async findByEmail(email) {
-        // Normalize email - trim and lowercase
-        const normalizedEmail = (email || '').trim().toLowerCase();
-
-        console.log('🔍 Searching for user with email:', normalizedEmail);
+        const normalizedEmail = String(email || '').trim().toLowerCase();
 
         const { data, error } = await supabase
             .from(USERS_TABLE)
             .select('*')
-            .ilike('email', normalizedEmail)  // Case-insensitive search
-            .limit(1);
+            .eq('email', normalizedEmail)
+            .maybeSingle();
 
-        if (error) {
-            console.error('❌ Supabase query error:', error);
-            throw error;
-        }
-
-        console.log('📊 Query result:', data);
-        return mapUserRow(data?.[0]);
+        if (error) throw error;
+        return mapUserRow(data);
     }
 
     static async findById(id) {
         const { data, error } = await supabase
             .from(USERS_TABLE)
             .select('*')
-            .eq('id', Number(id))
-            .limit(1);
+            .eq('id', id)
+            .maybeSingle();
 
         if (error) throw error;
-        return mapUserRow(data?.[0]);
+        return mapUserRow(data);
     }
 
     static async create(userData) {
         const row = mapUserInsert(userData);
-
-        console.log('📝 Inserting user:', row);
 
         const { data, error } = await supabase
             .from(USERS_TABLE)
@@ -95,12 +85,7 @@ class User {
             .select('*')
             .single();
 
-        if (error) {
-            console.error('❌ Supabase insert error:', error);
-            throw error;
-        }
-
-        console.log('✓ User created in Supabase:', data);
+        if (error) throw error;
         return mapUserRow(data);
     }
 
@@ -113,7 +98,7 @@ class User {
         const { data, error } = await supabase
             .from(USERS_TABLE)
             .update(mappedUpdates)
-            .eq('id', Number(id))
+            .eq('id', id)
             .select('*')
             .maybeSingle();
 

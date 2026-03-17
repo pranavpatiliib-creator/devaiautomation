@@ -1,99 +1,94 @@
-// ================= API CONFIGURATION =================
-
-const API_BASE_URL =
-    (window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1")
-        ? "http://localhost:5000"
-        : "https://devaiautomation.onrender.com";
-
-// ================= API CALLS =================
+const API_BASE_URL = window.location.origin;
 
 class API {
-    static async post(endpoint, body) {
-        const res = await fetch(`${API_BASE_URL}${endpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        return res.json();
-    }
+    static async request(endpoint, options = {}) {
+        const {
+            method = 'GET',
+            body,
+            token,
+            headers = {}
+        } = options;
 
-    static async get(endpoint, token = null) {
-        const headers = { 'Content-Type': 'application/json' };
-        if (token) {
-            headers['Authorization'] = token;
+        const finalHeaders = { ...headers };
+
+        if (body !== undefined && !finalHeaders['Content-Type']) {
+            finalHeaders['Content-Type'] = 'application/json';
         }
-        const res = await fetch(`${API_BASE_URL}${endpoint}`, { headers });
-        return res.json();
-    }
 
-    static async put(endpoint, body, token) {
-        const headers = {
-            'Content-Type': 'application/json',
-            'Authorization': token
-        };
-        const res = await fetch(`${API_BASE_URL}${endpoint}`, {
-            method: 'PUT',
-            headers,
-            body: JSON.stringify(body)
+        if (token) {
+            finalHeaders.Authorization = `Bearer ${token}`;
+        }
+
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+            method,
+            headers: finalHeaders,
+            body: body !== undefined ? JSON.stringify(body) : undefined
         });
-        return res.json();
+
+        const contentType = response.headers.get('content-type') || '';
+
+        if (!response.ok) {
+            let errorPayload = {};
+            if (contentType.includes('application/json')) {
+                errorPayload = await response.json();
+            }
+
+            throw new Error(errorPayload.error || errorPayload.message || `Request failed (${response.status})`);
+        }
+
+        if (contentType.includes('application/json')) {
+            return response.json();
+        }
+
+        return response.text();
     }
 
-    static async delete(endpoint, token) {
-        const headers = { 'Authorization': token };
-        const res = await fetch(`${API_BASE_URL}${endpoint}`, {
-            method: 'DELETE',
-            headers
+    static async download(endpoint, token) {
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
-        return res.json();
+
+        if (!response.ok) {
+            throw new Error(`Download failed (${response.status})`);
+        }
+
+        return response.blob();
     }
 
-    // Auth endpoints
-    static async signup(data) {
-        return this.post('/api/signup', data);
+    static signup(data) {
+        return this.request('/api/signup', { method: 'POST', body: data });
     }
 
-    static async login(email, password) {
-        return this.post('/api/login', { email, password });
+    static login(email, password) {
+        return this.request('/api/login', {
+            method: 'POST',
+            body: { email, password }
+        });
     }
 
-    static async forgotPassword(email) {
-        return this.post('/api/forgot-password', { email });
+    static forgotPassword(email) {
+        return this.request('/api/forgot-password', {
+            method: 'POST',
+            body: { email }
+        });
     }
 
-    static async resetPassword(token, newPassword) {
-        return this.post('/api/reset-password', { token, newPassword });
+    static resetPassword(token, newPassword) {
+        return this.request('/api/reset-password', {
+            method: 'POST',
+            body: { token, newPassword }
+        });
     }
 
-    // Leads endpoints
-    static async getLeads(token) {
-        return this.get('/api/leads', token);
-    }
-
-    static async addLead(data, token) {
-        return this.post('/api/lead', data);
-    }
-
-    static async updateLead(id, status, token) {
-        return this.put(`/api/lead/${id}`, { status }, token);
-    }
-
-    static async updateLeadNote(id, note, token) {
-        return this.put(`/api/lead-note/${id}`, { note }, token);
-    }
-
-    static async deleteLead(id, token) {
-        return this.delete(`/api/lead/${id}`, token);
-    }
-
-    // Public endpoints
-    static async submitPublicLead(userId, name, phone, service) {
-        return this.post('/api/lead-public', {
-            userId,
-            name,
-            phone,
-            service
+    static submitPublicLead(userId, name, phone, service) {
+        return this.request('/api/public/lead', {
+            method: 'POST',
+            body: {
+                user_id: userId,
+                name,
+                phone,
+                service
+            }
         });
     }
 }

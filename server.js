@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
+const supabase = require('./src/config/supabase');
 
 const app = express();
 
@@ -16,11 +17,12 @@ app.use(express.static(path.join(__dirname, 'public')));
 const authRoutes = require('./src/routes/auth');
 const leadsRoutes = require('./src/routes/leads');
 const publicRoutes = require('./src/routes/public');
-const rateLimiter = require('./src/middleware/rateLimiter');
+const saasRoutes = require('./src/routes/saas');
 // Register routes
 app.use('/api', authRoutes);
 app.use('/api', leadsRoutes);
 app.use('/api', publicRoutes);
+app.use('/api', saasRoutes);
 
 // ================= SERVE VIEWS =================
 // Page routes (must be after API routes to avoid conflicts)
@@ -72,12 +74,36 @@ app.use((err, req, res, next) => {
 
 
 // ================= SERVER START =================
+async function logSupabaseConnectionStatus() {
+    try {
+        const { error, status, statusText } = await supabase
+            .from('users')
+            .select('id')
+            .limit(1);
+
+        if (error) {
+            const code = error.code ? ` (${error.code})` : '';
+            const message = error.message || 'Unknown Supabase error';
+            console.error(`Supabase connection check failed${code}: ${message}`);
+            if (status || statusText) {
+                console.error(`Supabase HTTP status: ${status || ''} ${statusText || ''}`.trim());
+            }
+            return;
+        }
+
+        console.log('Supabase connected successfully');
+    } catch (error) {
+        console.error('Supabase connection check failed:', error.message);
+    }
+}
+
 if (require.main === module) {
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => {
         console.log('Server running on port ' + PORT);
         console.log('API: http://localhost:' + PORT);
         console.log('Frontend: http://localhost:' + PORT + '/');
+        logSupabaseConnectionStatus();
     });
 }
 

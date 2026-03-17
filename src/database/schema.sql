@@ -1,30 +1,256 @@
--- Supabase schema for LeadFlow AI
--- Run this in Supabase SQL editor before starting the app.
+-- =====================================================
+-- LeadFlow AI Production Schema
+-- Multi-Tenant AI Receptionist SaaS
+-- =====================================================
 
-create table if not exists public.users (
-    id bigint primary key generated always as identity,
-    name text not null,
-    email text not null unique,
-    password text not null,
-    profession text not null,
-    business_name text not null,
-    business_phone text not null,
-    location text not null,
-    services text not null,
-    website text not null,
-    created_at timestamptz not null default now()
+create extension if not exists "uuid-ossp";
+
+-------------------------------------------------------
+-- USERS (Platform Users)
+-------------------------------------------------------
+
+create table if not exists users (
+ id uuid primary key default uuid_generate_v4(),
+ name text not null,
+ email text not null unique,
+ password text not null,
+ profession text,
+ business_name text,
+ business_phone text,
+ services text,
+ website text,
+ location text,
+ created_at timestamptz default now()
 );
 
-create table if not exists public.leads (
-    id bigint primary key generated always as identity,
-    user_id bigint not null references public.users(id) on delete cascade,
-    name text not null,
-    phone text not null,
-    service text not null,
-    status text not null default 'New',
-    note text not null default '',
-    created_at timestamptz not null default now()
+-------------------------------------------------------
+-- TENANTS
+-------------------------------------------------------
+
+create table if not exists tenants (
+ id uuid primary key default uuid_generate_v4(),
+ user_id uuid references users(id) on delete cascade,
+ business_name text not null,
+ industry text,
+ whatsapp_number text,
+ fb_page_id text,
+ instagram_id text,
+ created_at timestamptz default now()
 );
 
-create index if not exists leads_user_id_idx on public.leads (user_id);
-create index if not exists leads_created_at_idx on public.leads (created_at desc);
+create index tenants_user_idx on tenants(user_id);
+
+-------------------------------------------------------
+-- CHANNEL CONNECTIONS
+-------------------------------------------------------
+
+create table if not exists channel_connections (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id) on delete cascade,
+ channel text not null,
+ access_token text,
+ page_id text,
+ phone_number text,
+ is_active boolean default true,
+ created_at timestamptz default now()
+);
+
+-------------------------------------------------------
+-- CUSTOMERS
+-------------------------------------------------------
+
+create table if not exists customers (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id) on delete cascade,
+ channel text not null,
+ sender_id text not null,
+ name text,
+ phone text,
+ created_at timestamptz default now(),
+ unique(tenant_id,channel,sender_id)
+);
+
+create index customers_tenant_idx on customers(tenant_id);
+
+-------------------------------------------------------
+-- CONVERSATIONS
+-------------------------------------------------------
+
+create table if not exists conversations (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id) on delete cascade,
+ customer_id uuid references customers(id) on delete cascade,
+ channel text,
+ sender_id text,
+ message text,
+ direction text,
+ intent text,
+ state text default 'menu',
+ message_id text,
+ created_at timestamptz default now()
+);
+
+create index conversations_customer_idx on conversations(customer_id);
+
+-------------------------------------------------------
+-- SERVICES
+-------------------------------------------------------
+
+create table if not exists services (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id) on delete cascade,
+ service_name text not null,
+ description text,
+ price numeric,
+ discount numeric default 0,
+ created_at timestamptz default now()
+);
+
+create index services_tenant_idx on services(tenant_id);
+
+-------------------------------------------------------
+-- OFFERS
+-------------------------------------------------------
+
+create table if not exists offers (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id) on delete cascade,
+ title text,
+ description text,
+ discount numeric,
+ valid_until date,
+ is_active boolean default true,
+ created_at timestamptz default now()
+);
+
+create index offers_tenant_idx on offers(tenant_id);
+
+-------------------------------------------------------
+-- MENU OPTIONS (Dashboard Configurable)
+-------------------------------------------------------
+
+create table if not exists menu_options (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id) on delete cascade,
+ title text not null,
+ action_type text not null,
+ action_value text,
+ position int default 1,
+ created_at timestamptz default now()
+);
+
+create index menu_tenant_idx on menu_options(tenant_id);
+
+-------------------------------------------------------
+-- LEADS
+-------------------------------------------------------
+
+create table if not exists leads (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id) on delete cascade,
+ customer_id uuid references customers(id),
+ name text,
+ phone text,
+ service text,
+ status text default 'new',
+ note text,
+ created_at timestamptz default now()
+);
+
+create index if not exists leads_tenant_idx on leads(tenant_id);
+
+-------------------------------------------------------
+-- APPOINTMENTS
+-------------------------------------------------------
+
+create table if not exists appointments (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id) on delete cascade,
+ customer_id uuid references customers(id),
+ service_id uuid references services(id),
+ appointment_date date,
+ appointment_time text,
+ status text default 'scheduled',
+ booking_source text default 'chatbot',
+ notes text,
+ created_at timestamptz default now()
+);
+
+create index appointments_tenant_idx on appointments(tenant_id);
+
+-------------------------------------------------------
+-- AUTOMATION RULES
+-------------------------------------------------------
+
+create table if not exists automation_rules (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id),
+ trigger_type text,
+ trigger_value text,
+ reply text,
+ priority int default 1,
+ created_at timestamptz default now()
+);
+
+create index if not exists automation_rules_tenant_idx on automation_rules(tenant_id);
+
+-------------------------------------------------------
+-- KNOWLEDGE BASE
+-------------------------------------------------------
+
+create table if not exists knowledge_base (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id),
+ question text,
+ answer text,
+ created_at timestamptz default now()
+);
+
+create index if not exists knowledge_base_tenant_idx on knowledge_base(tenant_id);
+
+create index if not exists channel_connections_tenant_idx on channel_connections(tenant_id);
+create index if not exists conversations_tenant_idx on conversations(tenant_id);
+
+alter table users add column if not exists services text;
+alter table users add column if not exists website text;
+alter table offers add column if not exists is_active boolean default true;
+alter table channel_connections add column if not exists is_active boolean default true;
+
+-------------------------------------------------------
+-- AI RESPONSES
+-------------------------------------------------------
+
+create table if not exists ai_responses (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id),
+ customer_id uuid references customers(id),
+ prompt text,
+ response text,
+ created_at timestamptz default now()
+);
+
+-------------------------------------------------------
+-- AI USAGE
+-------------------------------------------------------
+
+create table if not exists ai_usage (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id),
+ model text,
+ tokens_used int,
+ cost numeric,
+ created_at timestamptz default now()
+);
+
+-------------------------------------------------------
+-- AUTOMATION LOGS
+-------------------------------------------------------
+
+create table if not exists automation_logs (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id),
+ workflow_name text,
+ status text,
+ payload jsonb,
+ created_at timestamptz default now()
+);
