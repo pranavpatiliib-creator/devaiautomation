@@ -1,201 +1,105 @@
-/* Auth Pages Styling (Login, Signup, Forgot Password, Reset) */
-
+/* Reset */
 * {
-    box-sizing: border-box;
     margin: 0;
     padding: 0;
+    box-sizing: border-box;
 }
 
-html,
+/* Body */
 body {
-    height: 100%;
-}
-
-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-    background: #f0f4f8;
-    color: #1a1a1a;
-    line-height: 1.6;
-    min-height: 100vh;
+    height: 100dvh;
+    /* perfect mobile height */
     display: flex;
-    align-items: center;
     justify-content: center;
+    align-items: center;
+
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    background: #f5f7fa;
+
+    overflow: hidden;
+    /* 🔥 removes scroll */
 }
 
-/* ── Desktop: centered floating card ── */
+/* Container */
 .container {
     width: 100%;
-    max-width: 440px;
-    padding: 24px 16px;
     display: flex;
-    align-items: center;
     justify-content: center;
-    min-height: 100vh;
+    align-items: center;
 }
 
+/* Card (BOX) */
 .card {
-    background: #ffffff;
-    padding: 44px 36px;
-    border-radius: 16px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.10);
-    width: 100%;
+    background: #fff;
+    padding: 30px 25px;
+
+    border-radius: 12px;
+    box-shadow: 0 6px 25px rgba(0, 0, 0, 0.1);
+
+    width: 90%;
+    max-width: 380px;
 }
 
-.app-title {
+/* Headings */
+h1 {
     text-align: center;
     font-size: 24px;
-    font-weight: 700;
-    color: #1a1a1a;
-    margin-bottom: 6px;
+    margin-bottom: 5px;
 }
 
 h2 {
     text-align: center;
     color: #007bff;
     font-size: 18px;
-    font-weight: 600;
-    margin-bottom: 24px;
+    margin-bottom: 20px;
 }
 
-.subtitle {
-    text-align: center;
-    font-size: 13.5px;
-    color: #6b7280;
-    margin-bottom: 24px;
-}
-
-input,
-select {
-    display: block;
-    width: 100%;
-    padding: 13px 14px;
-    margin-bottom: 14px;
-    border: 1.5px solid #e5e7eb;
-    border-radius: 8px;
-    font-size: 15px;
-    font-family: inherit;
-    color: #1a1a1a;
-    background: #fafafa;
-    appearance: none;
-    -webkit-appearance: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-input::placeholder {
-    color: #adb5bd;
-}
-
-input:focus,
-select:focus {
-    outline: none;
-    border-color: #007bff;
-    background: #fff;
-    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.10);
-}
-
-button {
-    display: block;
+/* Inputs */
+input {
     width: 100%;
     padding: 13px;
-    margin-top: 4px;
-    background: linear-gradient(135deg, #007bff, #0056b3);
-    color: #fff;
+    margin-bottom: 12px;
+
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+input:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+/* Button */
+button {
+    width: 100%;
+    padding: 13px;
+
+    background: #007bff;
+    color: white;
+
     border: none;
     border-radius: 8px;
+
     font-size: 15px;
     font-weight: 600;
-    font-family: inherit;
     cursor: pointer;
-    box-shadow: 0 2px 10px rgba(0, 123, 255, 0.25);
-    transition: transform 0.2s, box-shadow 0.2s;
 }
 
-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 18px rgba(0, 123, 255, 0.35);
-}
-
-button:active {
-    transform: translateY(0);
+/* Links */
+a {
+    color: #007bff;
+    font-size: 13px;
+    text-decoration: none;
 }
 
 p {
     text-align: center;
-    font-size: 13.5px;
-    color: #6b7280;
-    margin-top: 18px;
-}
-
-a {
-    color: #007bff;
-    font-weight: 600;
-    text-decoration: none;
-}
-
-a:hover {
-    text-decoration: underline;
-}
-
-/* Message styling */
-#message {
-    text-align: center;
-    margin-top: 16px;
-    font-size: 14px;
-    padding: 10px;
-    border-radius: 8px;
-    display: none;
-}
-
-#message.success {
-    background: #d1fae5;
-    color: #065f46;
-    display: block;
-}
-
-#message.error {
-    background: #fee2e2;
-    color: #991b1b;
-    display: block;
-}
-
-#resetLinkBox {
-    background: #f0f4f8;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 12px 14px;
-    margin-top: 14px;
     font-size: 13px;
-    color: #007bff;
-    word-break: break-all;
-    display: none;
+    margin-top: 10px;
 }
 
-/* Mobile: full screen */
-@media (max-width: 768px) {
-    body {
-        display: block !important;
-        background: #ffffff !important;
-    }
-
-    .container {
-        padding: 0 !important;
-        max-width: 100% !important;
-        display: block !important;
-        min-height: 100vh;
-    }
-
-    .card {
-        padding: 60px 24px 40px !important;
-        border-radius: 0 !important;
-        box-shadow: none !important;
-        min-height: 100vh;
-        min-height: 100dvh;
-        width: 100% !important;
-    }
-
-    input,
-    select,
-    button {
-        font-size: 16px !important;
-    }
+/* Right align forgot password */
+p[style*="text-align:right"] {
+    text-align: right !important;
 }
