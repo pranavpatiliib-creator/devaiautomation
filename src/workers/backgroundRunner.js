@@ -4,6 +4,7 @@ const logger = require('../utils/appLogger');
 
 let started = false;
 let timer = null;
+
 // The background runner is responsible for periodically processing due posts and auto-replies. It uses an exponential backoff strategy to handle failures gracefully, ensuring that transient issues do not cause excessive load or log noise. The runner can be started with a specified interval, and it will continue to run indefinitely, adjusting its behavior based on success or failure of the processing tasks.
 function startBackgroundRunner({ intervalMs = 5000 } = {}) {
     if (started) return;
@@ -22,7 +23,6 @@ function startBackgroundRunner({ intervalMs = 5000 } = {}) {
             if (consecutiveFailures > 0) {
                 logger.info('Background runner recovered and resumed normal processing');
             }
-
             consecutiveFailures = 0;
             currentDelay = intervalMs;
         } catch (error) {
@@ -43,7 +43,6 @@ function startBackgroundRunner({ intervalMs = 5000 } = {}) {
 
     tick();
 }
-
 module.exports = {
     startBackgroundRunner
 };

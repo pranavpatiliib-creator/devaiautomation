@@ -38,7 +38,7 @@ function requireFields(body, fields = []) {
     }
     return missing;
 }
-
+// Mark a post as successfully posted by updating its status to 'posted' and clearing any error or retry information.
 module.exports = {
     isNonEmptyString,
     asTrimmedString,
