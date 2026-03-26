@@ -11,6 +11,39 @@ function decodeJwtPayload(token) {
     }
 }
 
+function setFeedback(element, message, type = 'error') {
+    if (!element) return;
+    element.className = `form-feedback ${type}`;
+    element.textContent = message || '';
+}
+
+function getAuthMessageElement() {
+    const existing = document.getElementById('authMessage');
+    if (existing) return existing;
+
+    const card = document.querySelector('.card');
+    if (!card) return null;
+
+    const el = document.createElement('div');
+    el.id = 'authMessage';
+    el.className = 'form-feedback';
+    el.setAttribute('aria-live', 'polite');
+
+    const button = card.querySelector('button');
+    if (button) {
+        card.insertBefore(el, button);
+    } else {
+        card.appendChild(el);
+    }
+
+    return el;
+}
+
+function isStrongPassword(password) {
+    const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
+    return passwordPattern.test(password);
+}
+
 function getUserId() {
     const token = localStorage.getItem('token');
     const payload = decodeJwtPayload(token);
@@ -29,6 +62,7 @@ function logout() {
 async function signup() {
     const signupBtn = document.getElementById('signupBtn');
     const spinner = document.getElementById('spinner');
+    const feedback = getAuthMessageElement();
 
     const name = document.getElementById('name').value.trim();
     const email = document.getElementById('email').value.trim().toLowerCase();
@@ -51,28 +85,28 @@ async function signup() {
         !services ||
         !website
     ) {
-        alert('Please fill all fields.');
+        setFeedback(feedback, 'Please fill all fields.', 'error');
         return;
     }
 
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailPattern.test(email)) {
-        alert('Please enter a valid email address.');
+        setFeedback(feedback, 'Please enter a valid email address.', 'error');
         return;
     }
 
     const phonePattern = /^[0-9]{10}$/;
     if (!phonePattern.test(businessPhone)) {
-        alert('Phone number must be 10 digits.');
+        setFeedback(feedback, 'Phone number must be 10 digits.', 'error');
         return;
     }
 
-    const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
-    if (!passwordPattern.test(password)) {
-        alert('Password must be at least 8 characters and include uppercase, lowercase, number and special character.');
+    if (!isStrongPassword(password)) {
+        setFeedback(feedback, 'Password must include uppercase, lowercase, number and special character.', 'error');
         return;
     }
 
+    setFeedback(feedback, '', 'info');
     if (signupBtn) signupBtn.disabled = true;
     if (spinner) spinner.style.display = 'inline-block';
 
@@ -89,10 +123,12 @@ async function signup() {
             website
         });
 
-        alert('Account created successfully');
-        window.location = '/login';
+        setFeedback(feedback, 'Account created successfully. Redirecting to login...', 'success');
+        setTimeout(() => {
+            window.location = '/login';
+        }, 700);
     } catch (error) {
-        alert(error.message || 'Signup failed');
+        setFeedback(feedback, error.message || 'Signup failed', 'error');
     } finally {
         if (signupBtn) signupBtn.disabled = false;
         if (spinner) spinner.style.display = 'none';
@@ -100,15 +136,17 @@ async function signup() {
 }
 
 async function login() {
+    const feedback = getAuthMessageElement();
     const email = document.getElementById('email').value.trim().toLowerCase();
     const password = document.getElementById('password').value;
 
     if (!email || !password) {
-        alert('Please enter email and password');
+        setFeedback(feedback, 'Please enter email and password.', 'error');
         return;
     }
 
     try {
+        setFeedback(feedback, '', 'info');
         const data = await API.login(email, password);
 
         localStorage.setItem('token', data.token);
@@ -117,9 +155,10 @@ async function login() {
         localStorage.setItem('name', data.name || '');
         localStorage.setItem('profession', data.profession || '');
 
+        setFeedback(feedback, 'Login successful. Redirecting...', 'success');
         window.location = '/dashboard';
     } catch (error) {
-        alert(error.message || 'Login failed');
+        setFeedback(feedback, error.message || 'Login failed', 'error');
     }
 }
 
@@ -127,32 +166,26 @@ async function forgotPassword() {
     const email = document.getElementById('email').value.trim();
     const message = document.getElementById('message');
     const resetLinkBox = document.getElementById('resetLinkBox');
+    if (resetLinkBox) {
+        resetLinkBox.style.display = 'none';
+        resetLinkBox.innerHTML = '';
+    }
 
     if (!email) {
-        if (message) {
-            message.className = 'error';
-            message.textContent = 'Please enter your email.';
-        }
+        setFeedback(message, 'Please enter your email.', 'error');
         return;
     }
 
     try {
         const data = await API.forgotPassword(email);
-
-        if (message) {
-            message.className = 'success';
-            message.textContent = data.message || 'Reset link generated.';
-        }
+        setFeedback(message, data.message || 'Reset link generated.', 'success');
 
         if (resetLinkBox && data.resetLink) {
             resetLinkBox.style.display = 'block';
             resetLinkBox.innerHTML = `<a href=\"${data.resetLink}\">Click here to reset password</a>`;
         }
     } catch (error) {
-        if (message) {
-            message.className = 'error';
-            message.textContent = error.message || 'Could not connect to server.';
-        }
+        setFeedback(message, error.message || 'Could not connect to server.', 'error');
     }
 }
 
@@ -163,50 +196,32 @@ async function resetPassword() {
     const token = new URLSearchParams(window.location.search).get('token');
 
     if (!token) {
-        if (message) {
-            message.className = 'error';
-            message.textContent = 'Invalid reset link.';
-        }
+        setFeedback(message, 'Invalid reset link.', 'error');
         return;
     }
 
     if (!newPassword || !confirmPassword) {
-        if (message) {
-            message.className = 'error';
-            message.textContent = 'Please fill in both fields.';
-        }
+        setFeedback(message, 'Please fill in both fields.', 'error');
         return;
     }
 
     if (newPassword !== confirmPassword) {
-        if (message) {
-            message.className = 'error';
-            message.textContent = 'Passwords do not match.';
-        }
+        setFeedback(message, 'Passwords do not match.', 'error');
         return;
     }
 
-    if (newPassword.length < 8) {
-        if (message) {
-            message.className = 'error';
-            message.textContent = 'Password must be at least 8 characters.';
-        }
+    if (!isStrongPassword(newPassword)) {
+        setFeedback(message, 'Password must include uppercase, lowercase, number and special character.', 'error');
         return;
     }
 
     try {
         const data = await API.resetPassword(token, newPassword);
-        if (message) {
-            message.className = 'success';
-            message.textContent = data.message || 'Password reset successful.';
-        }
+        setFeedback(message, data.message || 'Password reset successful.', 'success');
         setTimeout(() => {
             window.location.href = '/login';
         }, 2000);
     } catch (error) {
-        if (message) {
-            message.className = 'error';
-            message.textContent = error.message || 'Could not connect to server.';
-        }
+        setFeedback(message, error.message || 'Could not connect to server.', 'error');
     }
 }

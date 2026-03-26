@@ -10,7 +10,7 @@
 <body>
     <div class="container">
         <div class="card">
-            <h1 class="app-title">LeadFlow AI</h1>
+            <h1 class="app-title">Devai Automation</h1>
             <h2>Create Account For Your Business</h2>
 
             <input id="name" placeholder="Name">
@@ -37,9 +37,10 @@
             <input id="services" placeholder="Main Service">
             <input id="website" placeholder="Website">
 
+            <div id="authMessage" class="form-feedback" aria-live="polite"></div>
             <button id="signupBtn" onclick="signup()">
                 Sign Up
-                <span id="spinner" style="display:none;">⏳</span>
+                <span id="spinner" style="display:none;">...</span>
             </button>
 
             <p>Already registered? <a href="/login">Login here</a></p>

@@ -2,6 +2,7 @@
 const state = {
     token: localStorage.getItem('token'),
     activeModule: 'dashboard',
+    channelsOAuthListenerBound: false,
     charts: {
         messages: null,
         leads: null
@@ -21,6 +22,30 @@ const moduleTitles = {
     channels: 'Channel Connections',
     settings: 'Settings'
 };
+
+function getToastHost() {
+    let host = document.getElementById('toastHost');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'toastHost';
+        host.className = 'toast-host';
+        document.body.appendChild(host);
+    }
+    return host;
+}
+
+function showToast(message, type = 'info') {
+    const host = getToastHost();
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    host.appendChild(toast);
+
+    window.setTimeout(() => {
+        toast.classList.add('toast-leave');
+        window.setTimeout(() => toast.remove(), 180);
+    }, 3200);
+}
 function escapeHtml(value) {
     return String(value ?? '')
         .replace(/&/g, '&amp;')
@@ -55,10 +80,19 @@ function buildQuery(params) {
 }
 
 async function authedRequest(endpoint, options = {}) {
-    return API.request(endpoint, {
-        ...options,
-        token: state.token
-    });
+    try {
+        return await API.request(endpoint, {
+            ...options,
+            token: state.token
+        });
+    } catch (error) {
+        const message = String(error?.message || '').toLowerCase();
+        if (message.includes('token') || message.includes('access denied')) {
+            showToast('Session expired. Please login again.', 'error');
+            setTimeout(() => logout(), 350);
+        }
+        throw error;
+    }
 }
 
 function setRootHtml(html) {
@@ -84,7 +118,11 @@ function setActiveNav(moduleName) {
 }
 
 function notifyError(error) {
-    alert(error.message || 'Something went wrong');
+    showToast(error?.message || 'Something went wrong', 'error');
+}
+
+function notifySuccess(message) {
+    showToast(message, 'success');
 }
 
 async function loadProfileHeader() {
@@ -267,6 +305,7 @@ async function renderCustomersModule() {
     const table = document.getElementById('customersTable');
     const history = document.getElementById('customerHistory');
     const searchInput = document.getElementById('customerSearch');
+    let searchTimer = null;
 
     async function loadCustomers() {
         try {
@@ -344,6 +383,10 @@ async function renderCustomersModule() {
         if (event.key === 'Enter') {
             loadCustomers();
         }
+    });
+    searchInput.addEventListener('input', () => {
+        window.clearTimeout(searchTimer);
+        searchTimer = window.setTimeout(loadCustomers, 280);
     });
 
     await loadCustomers();
@@ -812,6 +855,7 @@ async function renderLeadsModule() {
                     <option value="contacted">Contacted</option>
                     <option value="qualified">Qualified</option>
                     <option value="converted">Converted</option>
+                    <option value="won">Won</option>
                     <option value="lost">Lost</option>
                 </select>
                 <input id="leadSearch" placeholder="Search by name, phone, service">
@@ -837,6 +881,7 @@ async function renderLeadsModule() {
     `);
 
     const table = document.getElementById('leadsTable');
+    let leadSearchTimer = null;
 
     async function loadLeads() {
         try {
@@ -856,7 +901,7 @@ async function renderLeadsModule() {
                     <td>${escapeHtml(row.service || '-')}</td>
                     <td>
                         <select data-lead-status="${row.id}">
-                            ${['new', 'contacted', 'qualified', 'converted', 'lost'].map((statusOption) => `
+                            ${['new', 'contacted', 'qualified', 'converted', 'won', 'lost'].map((statusOption) => `
                                 <option value="${statusOption}" ${String(row.status || '').toLowerCase() === statusOption ? 'selected' : ''}>${statusOption}</option>
                             `).join('')}
                         </select>
@@ -900,6 +945,10 @@ async function renderLeadsModule() {
     }, true);
 
     document.getElementById('leadFilterBtn').addEventListener('click', loadLeads);
+    document.getElementById('leadSearch').addEventListener('input', () => {
+        window.clearTimeout(leadSearchTimer);
+        leadSearchTimer = window.setTimeout(loadLeads, 300);
+    });
     document.getElementById('leadExportBtn').addEventListener('click', async () => {
         const status = document.getElementById('leadStatusFilter').value;
         const endpoint = `/api/leads/export/pdf${buildQuery({ status })}`;
@@ -958,18 +1007,18 @@ async function renderChannelsModule() {
     setRootHtml(`
         <section class="card stack">
             <h2>Channel Connections</h2>
+            <div class="toolbar">
+                <button class="btn" id="connectFacebookOAuthBtn" type="button">Connect Facebook</button>
+                <button class="btn" id="connectInstagramOAuthBtn" type="button">Connect Instagram</button>
+            </div>
             <div class="form-grid">
-                <select id="channelName">
-                    <option value="whatsapp">WhatsApp</option>
-                    <option value="instagram">Instagram</option>
-                    <option value="facebook">Facebook Messenger</option>
-                </select>
-                <input id="channelToken" placeholder="Access Token">
-                <input id="channelPageId" placeholder="Page / Account ID">
-                <input id="channelPhoneNumber" placeholder="Phone Number">
+                <input value="whatsapp" readonly>
+                <input id="channelToken" placeholder="WhatsApp Access Token">
+                <input id="channelPageId" placeholder="WhatsApp Page / Account ID">
+                <input id="channelPhoneNumber" placeholder="WhatsApp Phone Number">
             </div>
             <div class="actions">
-                <button class="btn" id="connectChannelBtn" type="button">Save Connection</button>
+                <button class="btn" id="connectChannelBtn" type="button">Save WhatsApp Connection</button>
             </div>
         </section>
         <section class="card stack">
@@ -982,6 +1031,7 @@ async function renderChannelsModule() {
                             <th>Token</th>
                             <th>Page ID</th>
                             <th>Phone</th>
+                            <th>Profile</th>
                             <th>Status</th>
                             <th>Actions</th>
                         </tr>
@@ -998,8 +1048,24 @@ async function renderChannelsModule() {
         try {
             const channels = await authedRequest('/api/channel-connections');
             if (!channels.length) {
-                table.innerHTML = '<tr><td colspan="7"><div class="empty-state">No channel connections configured.</div></td></tr>';
+                table.innerHTML = '<tr><td colspan="8"><div class="empty-state">No channel connections configured.</div></td></tr>';
                 return;
+            }
+
+            function renderProfile(profile, channel) {
+                if (!profile) return '-';
+                if (channel === 'facebook') {
+                    const name = profile.page_name || 'Facebook Page';
+                    const picture = profile.page_picture ? `<img src="${escapeHtml(profile.page_picture)}" alt="${escapeHtml(name)}" style="width:26px;height:26px;border-radius:999px;vertical-align:middle;margin-right:8px;">` : '';
+                    return `${picture}<span>${escapeHtml(name)}</span>`;
+                }
+                if (channel === 'instagram') {
+                    const username = profile.username ? `@${profile.username}` : 'Instagram Business';
+                    const display = profile.name || username;
+                    const picture = profile.profile_picture ? `<img src="${escapeHtml(profile.profile_picture)}" alt="${escapeHtml(display)}" style="width:26px;height:26px;border-radius:999px;vertical-align:middle;margin-right:8px;">` : '';
+                    return `${picture}<span>${escapeHtml(display)}</span>`;
+                }
+                return escapeHtml(JSON.stringify(profile));
             }
 
             table.innerHTML = channels.map((row) => `
@@ -1009,6 +1075,7 @@ async function renderChannelsModule() {
                     <td>${escapeHtml(row.token_preview || '-')}</td>
                     <td>${escapeHtml(row.page_id || '-')}</td>
                     <td>${escapeHtml(row.phone_number || '-')}</td>
+                    <td>${renderProfile(row.profile, row.channel)}</td>
                     <td>
                         <select data-channel-status="${row.id}">
                             <option value="true" ${row.is_active ? 'selected' : ''}>Active</option>
@@ -1025,8 +1092,39 @@ async function renderChannelsModule() {
         }
     }
 
+    async function startMetaOAuth(channel) {
+        try {
+            const response = await authedRequest(`/api/meta/oauth/start${buildQuery({ channel })}`);
+            if (!response?.authUrl) {
+                throw new Error('Meta OAuth URL not available');
+            }
+
+            const popup = window.open(response.authUrl, `meta_oauth_${channel}`, 'width=600,height=760');
+            if (!popup) {
+                throw new Error('Popup blocked. Please allow popups and try again.');
+            }
+        } catch (error) {
+            notifyError(error);
+        }
+    }
+
+    if (!state.channelsOAuthListenerBound) {
+        window.addEventListener('message', async (event) => {
+            if (event.origin !== window.location.origin) return;
+            if (!event.data || event.data.type !== 'meta_oauth_success') return;
+
+            notifySuccess(`${event.data.channel} connected successfully.`);
+            if (state.activeModule === 'channels') {
+                await loadChannels();
+            }
+        });
+        state.channelsOAuthListenerBound = true;
+    }
+
+    document.getElementById('connectFacebookOAuthBtn').addEventListener('click', () => startMetaOAuth('facebook'));
+    document.getElementById('connectInstagramOAuthBtn').addEventListener('click', () => startMetaOAuth('instagram'));
+
     document.getElementById('connectChannelBtn').addEventListener('click', async () => {
-        const channel = document.getElementById('channelName').value;
         const accessToken = document.getElementById('channelToken').value.trim();
         const pageId = document.getElementById('channelPageId').value.trim();
         const phoneNumber = document.getElementById('channelPhoneNumber').value.trim();
@@ -1035,7 +1133,7 @@ async function renderChannelsModule() {
             await authedRequest('/api/channel-connections', {
                 method: 'POST',
                 body: {
-                    channel,
+                    channel: 'whatsapp',
                     accessToken,
                     pageId,
                     phoneNumber,
@@ -1160,7 +1258,7 @@ async function renderSettingsModule() {
                 body: payload
             });
             await loadProfileHeader();
-            alert('Settings updated successfully.');
+            notifySuccess('Settings updated successfully.');
         } catch (error) {
             notifyError(error);
         }
@@ -1170,7 +1268,7 @@ async function renderSettingsModule() {
         const link = document.getElementById('leadFormLink').value;
         try {
             await navigator.clipboard.writeText(link);
-            alert('Lead form link copied.');
+            notifySuccess('Lead form link copied.');
         } catch (error) {
             notifyError(error);
         }

@@ -362,6 +362,46 @@ tbody tr:hover {
     background: #fafcff;
 }
 
+.toast-host {
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 1200;
+}
+
+.toast {
+    min-width: 220px;
+    max-width: 360px;
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: #fff;
+    font-size: 13px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.toast-info {
+    background: #0f5cd9;
+}
+
+.toast-success {
+    background: #138a5a;
+}
+
+.toast-error {
+    background: #c7343a;
+}
+
+.toast-leave {
+    opacity: 0;
+    transform: translateY(-8px);
+}
+
 @media (max-width: 1100px) {
     .stats-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));

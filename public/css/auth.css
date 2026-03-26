@@ -103,3 +103,33 @@ p {
 p[style*="text-align:right"] {
     text-align: right !important;
 }
+
+.form-feedback,
+#message {
+    min-height: 20px;
+    margin: 6px 0 10px;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+}
+
+.form-feedback.info,
+#message.info {
+    color: #1d4ed8;
+}
+
+.form-feedback.success,
+#message.success {
+    color: #15803d;
+}
+
+.form-feedback.error,
+#message.error {
+    color: #b91c1c;
+}
+
+#resetLinkBox {
+    margin-top: 4px;
+    font-size: 13px;
+    word-break: break-word;
+}

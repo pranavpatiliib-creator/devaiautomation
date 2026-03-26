@@ -19,11 +19,16 @@ class API {
             finalHeaders.Authorization = `Bearer ${token}`;
         }
 
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-            method,
-            headers: finalHeaders,
-            body: body !== undefined ? JSON.stringify(body) : undefined
-        });
+        let response;
+        try {
+            response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                method,
+                headers: finalHeaders,
+                body: body !== undefined ? JSON.stringify(body) : undefined
+            });
+        } catch (networkError) {
+            throw new Error('Network error. Please check your connection and try again.');
+        }
 
         const contentType = response.headers.get('content-type') || '';
 
@@ -31,6 +36,11 @@ class API {
             let errorPayload = {};
             if (contentType.includes('application/json')) {
                 errorPayload = await response.json();
+            } else {
+                const rawMessage = await response.text();
+                if (rawMessage) {
+                    errorPayload.error = rawMessage;
+                }
             }
 
             throw new Error(errorPayload.error || errorPayload.message || `Request failed (${response.status})`);
@@ -87,7 +97,7 @@ class API {
                 user_id: userId,
                 name,
                 phone,
-                service
+                service  
             }
         });
     }

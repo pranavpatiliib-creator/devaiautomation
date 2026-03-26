@@ -11,6 +11,28 @@ function normalizeStatus(value) {
     return String(value || '').trim().toLowerCase();
 }
 
+const ALLOWED_LEAD_STATUSES = new Set([
+    'new',
+    'contacted',
+    'qualified',
+    'converted',
+    'lost',
+    'won'
+]);
+
+function sanitizeLeadText(value, maxLength = 255) {
+    return String(value || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .slice(0, maxLength);
+}
+
+function parseLeadStatus(value) {
+    const normalized = normalizeStatus(value);
+    if (!normalized) return null;
+    return ALLOWED_LEAD_STATUSES.has(normalized) ? normalized : null;
+}
+
 function parseDateBoundary(dateString, endOfDay = false) {
     if (!dateString) return null;
 
@@ -185,9 +207,12 @@ router.get('/leads', async (req, res) => {
     }
 });
 
-router.post('/lead', async (req, res) => {
+router.post(['/lead', '/leads'], async (req, res) => {
     try {
-        const { name, phone, service, customer_id } = req.body;
+        const name = sanitizeLeadText(req.body.name, 120);
+        const phone = sanitizeLeadText(req.body.phone, 30);
+        const service = sanitizeLeadText(req.body.service, 120);
+        const customerId = req.body.customer_id || req.body.customerId || null;
 
         if (!name || !phone || !service) {
             return res.status(400).json({ error: 'name, phone, and service are required' });
@@ -197,7 +222,7 @@ router.post('/lead', async (req, res) => {
             .from('leads')
             .insert({
                 tenant_id: req.tenantId,
-                customer_id: customer_id || null,
+                customer_id: customerId,
                 name,
                 phone,
                 service,
@@ -220,6 +245,11 @@ router.put('/lead/:id', async (req, res) => {
     try {
         const { status } = req.body;
         const leadId = req.params.id;
+        const parsedStatus = parseLeadStatus(status);
+
+        if (!parsedStatus) {
+            return res.status(400).json({ error: 'Invalid lead status' });
+        }
 
         const lead = await getLeadById(req.tenantId, leadId);
         if (!lead) {
@@ -228,7 +258,7 @@ router.put('/lead/:id', async (req, res) => {
 
         const { error } = await supabase
             .from('leads')
-            .update({ status })
+            .update({ status: parsedStatus })
             .eq('tenant_id', req.tenantId)
             .eq('id', leadId);
 
@@ -243,7 +273,7 @@ router.put('/lead/:id', async (req, res) => {
 
 router.put('/lead-note/:id', async (req, res) => {
     try {
-        const { note } = req.body;
+        const note = sanitizeLeadText(req.body.note, 2000);
         const leadId = req.params.id;
 
         const lead = await getLeadById(req.tenantId, leadId);
@@ -253,7 +283,7 @@ router.put('/lead-note/:id', async (req, res) => {
 
         const { error } = await supabase
             .from('leads')
-            .update({ note: note || '' })
+            .update({ note })
             .eq('tenant_id', req.tenantId)
             .eq('id', leadId);
 
@@ -272,10 +302,14 @@ router.put('/leads/:id', async (req, res) => {
         const updates = {};
 
         if (req.body.status !== undefined) {
-            updates.status = req.body.status;
+            const parsedStatus = parseLeadStatus(req.body.status);
+            if (!parsedStatus) {
+                return res.status(400).json({ error: 'Invalid lead status' });
+            }
+            updates.status = parsedStatus;
         }
         if (req.body.note !== undefined) {
-            updates.note = req.body.note;
+            updates.note = sanitizeLeadText(req.body.note, 2000);
         }
 
         if (Object.keys(updates).length === 0) {
@@ -304,7 +338,7 @@ router.put('/leads/:id', async (req, res) => {
     }
 });
 
-router.delete('/lead/:id', async (req, res) => {
+router.delete(['/lead/:id', '/leads/:id'], async (req, res) => {
     try {
         const leadId = req.params.id;
         const lead = await getLeadById(req.tenantId, leadId);

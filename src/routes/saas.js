@@ -5,6 +5,7 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const { verifyToken } = require('../middleware/auth');
 const { requireTenant } = require('../middleware/tenant');
+const { connectionReadLimiter, connectionWriteLimiter } = require('../middleware/rateLimiter');
 const { encryptSecret, decryptSecret, maskSecret } = require('../utils/secretCrypto');
 
 router.use(verifyToken, requireTenant);
@@ -120,6 +121,7 @@ function mapRuleRow(row) {
 
 function mapConnectionRow(row) {
     const token = decryptSecret(row.access_token);
+    const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : null;
 
     return {
         id: row.id,
@@ -129,6 +131,7 @@ function mapConnectionRow(row) {
         is_active: row.is_active !== false,
         has_token: Boolean(row.access_token),
         token_preview: token ? maskSecret(token) : '',
+        profile: metadata,
         created_at: row.created_at
     };
 }
@@ -456,7 +459,7 @@ router.get('/offers', async (req, res) => {
             .eq('tenant_id', req.tenantId)
             .order('created_at', { ascending: false });
 
-        if (error && isMissingColumnError(error, 'is_active')) {
+        if (error && isMissingColumnError(error)) {
             ({ data, error } = await supabase
                 .from('offers')
                 .select('id,title,description,discount,valid_until,created_at')
@@ -1075,22 +1078,22 @@ router.delete('/automation-rules/:id', async (req, res) => {
         return safeJsonError(res, error, 'Failed to delete automation rule');
     }
 });
-router.get('/channel-connections', async (req, res) => {
+router.get('/channel-connections', connectionReadLimiter, async (req, res) => {
     try {
         let { data, error } = await supabase
             .from('channel_connections')
-            .select('id,channel,access_token,page_id,phone_number,is_active,created_at')
+            .select('id,channel,access_token,page_id,phone_number,is_active,metadata,created_at')
             .eq('tenant_id', req.tenantId)
             .order('created_at', { ascending: false });
 
-        if (error && isMissingColumnError(error, 'is_active')) {
+        if (error && isMissingColumnError(error)) {
             ({ data, error } = await supabase
                 .from('channel_connections')
                 .select('id,channel,access_token,page_id,phone_number,created_at')
                 .eq('tenant_id', req.tenantId)
                 .order('created_at', { ascending: false }));
             if (!error) {
-                data = (data || []).map((row) => ({ ...row, is_active: true }));
+                data = (data || []).map((row) => ({ ...row, is_active: true, metadata: null }));
             }
         }
 
@@ -1105,7 +1108,7 @@ router.get('/channel-connections', async (req, res) => {
     }
 });
 
-router.post('/channel-connections', async (req, res) => {
+router.post('/channel-connections', connectionWriteLimiter, async (req, res) => {
     try {
         const channel = String(req.body.channel || '').trim().toLowerCase();
         const accessToken = String(req.body.access_token || req.body.accessToken || '').trim();
@@ -1116,13 +1119,13 @@ router.post('/channel-connections', async (req, res) => {
 
         let { data: existing, error: existingError } = await supabase
             .from('channel_connections')
-            .select('id,channel,access_token,page_id,phone_number,is_active,created_at')
+            .select('id,channel,access_token,page_id,phone_number,is_active,metadata,created_at')
             .eq('tenant_id', req.tenantId)
             .eq('channel', channel)
             .limit(1)
             .maybeSingle();
 
-        if (existingError && isMissingColumnError(existingError, 'is_active')) {
+        if (existingError && isMissingColumnError(existingError)) {
             ({ data: existing, error: existingError } = await supabase
                 .from('channel_connections')
                 .select('id,channel,access_token,page_id,phone_number,created_at')
@@ -1130,6 +1133,10 @@ router.post('/channel-connections', async (req, res) => {
                 .eq('channel', channel)
                 .limit(1)
                 .maybeSingle());
+            if (!existingError && existing) {
+                existing.metadata = null;
+                existing.is_active = true;
+            }
         }
 
         if (existingError) throw existingError;
@@ -1139,6 +1146,7 @@ router.post('/channel-connections', async (req, res) => {
             channel,
             page_id: req.body.page_id || req.body.pageId || null,
             phone_number: req.body.phone_number || req.body.phoneNumber || null,
+            metadata: req.body.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : null,
             is_active: toBoolean(req.body.is_active, true)
         };
 
@@ -1154,19 +1162,20 @@ router.post('/channel-connections', async (req, res) => {
                 .update(payload)
                 .eq('id', existing.id)
                 .eq('tenant_id', req.tenantId)
-                .select('id,channel,access_token,page_id,phone_number,is_active,created_at')
+                .select('id,channel,access_token,page_id,phone_number,is_active,metadata,created_at')
                 .single();
         } else {
             response = await supabase
                 .from('channel_connections')
                 .insert(payload)
-                .select('id,channel,access_token,page_id,phone_number,is_active,created_at')
+                .select('id,channel,access_token,page_id,phone_number,is_active,metadata,created_at')
                 .single();
         }
 
-        if (response.error && isMissingColumnError(response.error, 'is_active')) {
+        if (response.error && isMissingColumnError(response.error)) {
             const fallbackPayload = { ...payload };
             delete fallbackPayload.is_active;
+            delete fallbackPayload.metadata;
 
             if (existing) {
                 response = await supabase
@@ -1186,6 +1195,7 @@ router.post('/channel-connections', async (req, res) => {
 
             if (!response.error && response.data) {
                 response.data.is_active = true;
+                response.data.metadata = null;
             }
         }
 
@@ -1200,7 +1210,7 @@ router.post('/channel-connections', async (req, res) => {
     }
 });
 
-router.put('/channel-connections/:id', async (req, res) => {
+router.put('/channel-connections/:id', connectionWriteLimiter, async (req, res) => {
     try {
         const payload = {};
 
@@ -1212,6 +1222,11 @@ router.put('/channel-connections/:id', async (req, res) => {
         }
         if (req.body.is_active !== undefined) {
             payload.is_active = toBoolean(req.body.is_active, true);
+        }
+        if (req.body.metadata !== undefined) {
+            payload.metadata = req.body.metadata && typeof req.body.metadata === 'object'
+                ? req.body.metadata
+                : null;
         }
         if (req.body.access_token !== undefined || req.body.accessToken !== undefined) {
             const rawToken = String(req.body.access_token || req.body.accessToken || '').trim();
@@ -1229,12 +1244,13 @@ router.put('/channel-connections/:id', async (req, res) => {
             .update(payload)
             .eq('id', req.params.id)
             .eq('tenant_id', req.tenantId)
-            .select('id,channel,access_token,page_id,phone_number,is_active,created_at')
+            .select('id,channel,access_token,page_id,phone_number,is_active,metadata,created_at')
             .maybeSingle();
 
-        if (error && isMissingColumnError(error, 'is_active')) {
+        if (error && isMissingColumnError(error)) {
             const fallbackPayload = { ...payload };
             delete fallbackPayload.is_active;
+            delete fallbackPayload.metadata;
             ({ data, error } = await supabase
                 .from('channel_connections')
                 .update(fallbackPayload)
@@ -1245,6 +1261,7 @@ router.put('/channel-connections/:id', async (req, res) => {
 
             if (!error && data) {
                 data.is_active = true;
+                data.metadata = null;
             }
         }
 
@@ -1260,7 +1277,7 @@ router.put('/channel-connections/:id', async (req, res) => {
     }
 });
 
-router.delete('/channel-connections/:id', async (req, res) => {
+router.delete('/channel-connections/:id', connectionWriteLimiter, async (req, res) => {
     try {
         const { error } = await supabase
             .from('channel_connections')

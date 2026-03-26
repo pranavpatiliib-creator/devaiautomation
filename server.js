@@ -7,8 +7,20 @@ const supabase = require('./src/config/supabase');
 const app = express();
 
 // ================= MIDDLEWARE =================
-app.use(cors());
-app.use(express.json());
+const allowedOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+app.use(cors({
+    origin(origin, callback) {
+        if (!origin) return callback(null, true); // same-origin / curl / server-to-server
+        if (allowedOrigins.length === 0) return callback(null, true);
+        return callback(null, allowedOrigins.includes(origin));
+    },
+    credentials: true
+}));
+app.use(express.json({ limit: '1mb' }));
 
 // Serve static files BEFORE routes - critical for CSS/JS loading
 app.use(express.static(path.join(__dirname, 'public')));
@@ -18,11 +30,18 @@ const authRoutes = require('./src/routes/auth');
 const leadsRoutes = require('./src/routes/leads');
 const publicRoutes = require('./src/routes/public');
 const saasRoutes = require('./src/routes/saas');
+const metaAuthRoutes = require('./src/routes/metaAuth');
+const postsRoutes = require('./src/routes/posts');
+const autoReplyRoutes = require('./src/routes/autoReply');
+const { startBackgroundRunner } = require('./src/workers/backgroundRunner');
 // Register routes
 app.use('/api', authRoutes);
-app.use('/api', leadsRoutes);
 app.use('/api', publicRoutes);
+app.use('/api', leadsRoutes);
 app.use('/api', saasRoutes);
+app.use('/api', metaAuthRoutes);
+app.use('/api', postsRoutes);
+app.use('/api', autoReplyRoutes);
 
 // ================= SERVE VIEWS =================
 // Page routes (must be after API routes to avoid conflicts)
@@ -104,6 +123,7 @@ if (require.main === module) {
         console.log('API: http://localhost:' + PORT);
         console.log('Frontend: http://localhost:' + PORT + '/');
         logSupabaseConnectionStatus();
+        startBackgroundRunner({ intervalMs: Number(process.env.BACKGROUND_INTERVAL_MS) || 5000 });
     });
 }
 
