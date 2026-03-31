@@ -31,6 +31,19 @@ function parseResetToken(token) {
     }
     return decoded;
 }
+
+function getAuthCookieOptions(req) {
+    const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+    const isSecure = req.secure || forwardedProto === 'https';
+
+    return {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: isSecure,
+        path: '/',
+        maxAge: 7 * 24 * 60 * 60 * 1000
+    };
+}
 // Controller class for handling authentication-related routes, including signup, login, forgot password, and reset password. It interacts with the User model and tenant service to manage user accounts and their associated tenant contexts.
 class AuthController {
     static async signup(req, res) {
@@ -149,6 +162,8 @@ class AuthController {
                 { expiresIn: '7d' }
             );
 
+            res.cookie('auth_token', token, getAuthCookieOptions(req));
+
             return res.json({
                 success: true,
                 token,
@@ -219,6 +234,20 @@ class AuthController {
             return res.json({ message: 'Password reset successful' });
         } catch (err) {
             console.error('Reset password error:', err);
+            return res.status(500).json({ error: 'Server error' });
+        }
+    }
+
+    static async logout(req, res) {
+        try {
+            res.clearCookie('auth_token', {
+                ...getAuthCookieOptions(req),
+                maxAge: undefined
+            });
+
+            return res.json({ success: true });
+        } catch (err) {
+            console.error('Logout error:', err);
             return res.status(500).json({ error: 'Server error' });
         }
     }

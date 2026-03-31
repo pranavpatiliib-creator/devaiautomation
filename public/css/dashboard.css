@@ -362,6 +362,169 @@ tbody tr:hover {
     background: #fafcff;
 }
 
+.setup-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
+}
+
+.setup-highlight {
+    background: linear-gradient(135deg, #edf4ff, #f8fbff);
+    border: 1px solid #cddcff;
+}
+
+.setup-highlight p {
+    margin-top: 8px;
+}
+
+.setup-chip-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+}
+
+.setup-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.setup-chip.pending {
+    border-color: #f0c86b;
+    background: #fff8e7;
+    color: #8a6111;
+}
+
+.setup-chip.complete {
+    border-color: #9ed8bb;
+    background: #edf9f2;
+    color: #116742;
+}
+
+.setup-list {
+    display: grid;
+    gap: 10px;
+}
+
+.setup-question {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    background: #fff;
+}
+
+.setup-question strong {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 14px;
+}
+
+.setup-question p {
+    margin: 0 0 10px;
+    font-size: 13px;
+}
+
+.setup-question-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.setup-answer {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.setup-sidecard {
+    display: grid;
+    gap: 12px;
+}
+
+.setup-checklist {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--muted);
+    display: grid;
+    gap: 8px;
+}
+
+.setup-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(9, 19, 48, 0.52);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 120;
+}
+
+.setup-modal {
+    width: min(560px, 100%);
+    background: #fff;
+    border-radius: 18px;
+    border: 1px solid #d8e4ff;
+    box-shadow: 0 24px 60px rgba(15, 28, 63, 0.24);
+    padding: 22px;
+}
+
+.setup-modal h3 {
+    margin: 0;
+    font-size: 22px;
+}
+
+.setup-modal p {
+    margin: 8px 0 0;
+    color: var(--muted);
+}
+
+.setup-modal .prompt-label {
+    display: block;
+    margin: 18px 0 8px;
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 600;
+}
+
+.setup-modal textarea {
+    min-height: 120px;
+}
+
+.setup-progress {
+    margin-top: 14px;
+    height: 10px;
+    border-radius: 999px;
+    background: #edf2ff;
+    overflow: hidden;
+}
+
+.setup-progress span {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #0f5cd9, #2f86ff);
+    border-radius: inherit;
+}
+
+.setup-modal-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
 .toast-host {
     position: fixed;
     top: 18px;
@@ -413,6 +576,10 @@ tbody tr:hover {
 
     .form-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .setup-grid {
+        grid-template-columns: 1fr;
     }
 }
 

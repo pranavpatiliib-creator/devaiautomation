@@ -3,6 +3,8 @@ const state = {
     token: localStorage.getItem('token'),
     activeModule: 'dashboard',
     channelsOAuthListenerBound: false,
+    autoReplyPromptOpen: false,
+    autoReplySetupCache: null,
     charts: {
         messages: null,
         leads: null
@@ -17,10 +19,116 @@ const moduleTitles = {
     'menu-builder': 'Menu Builder',
     appointments: 'Appointments',
     leads: 'Leads',
-    'knowledge-base': 'Knowledge Base',
+    posts: 'Posts',
+    'knowledge-base': 'Auto Reply Setup',
     'automation-rules': 'Automation Rules',
     channels: 'Channel Connections',
     settings: 'Settings'
+};
+
+const AUTO_REPLY_PROMPT_LIBRARY = {
+    default: [
+        {
+            key: 'business_hours',
+            question: 'What are your business hours?',
+            placeholder: 'Example: Monday to Saturday, 9:00 AM to 8:00 PM. Sunday closed.',
+            hint: 'Customers often ask when they can visit or expect a reply.'
+        },
+        {
+            key: 'location',
+            question: 'Where is your business located?',
+            placeholder: 'Example: 2nd Floor, MG Road, Pune. Landmark: Near City Mall.',
+            hint: 'This helps auto replies answer location and visit-related questions.'
+        },
+        {
+            key: 'contact',
+            question: 'What is the best contact number or WhatsApp number for customers?',
+            placeholder: 'Example: +91 98XXXXXX12 on call or WhatsApp.',
+            hint: 'Useful when customers ask how to reach you quickly.'
+        },
+        {
+            key: 'pricing',
+            question: 'How should we answer when customers ask about pricing?',
+            placeholder: 'Example: Prices depend on the service. Share your requirement and we will send the exact quote.',
+            hint: 'A clear pricing response prevents vague or inconsistent replies.'
+        },
+        {
+            key: 'booking',
+            question: 'How can customers book, place an order, or confirm service?',
+            placeholder: 'Example: Share your name, phone number, preferred time, and service. We will confirm shortly.',
+            hint: 'This gives the auto reply a clear next step.'
+        }
+    ],
+    salon: [
+        {
+            key: 'appointment_policy',
+            question: 'How should we answer appointment and walk-in questions?',
+            placeholder: 'Example: We accept both walk-ins and appointments. Appointments are preferred on weekends.',
+            hint: 'Perfect for salons, spas, and beauty businesses.'
+        },
+        {
+            key: 'popular_services',
+            question: 'Which salon services should we mention first in replies?',
+            placeholder: 'Example: Haircut, beard styling, facial, hair color, bridal makeup.',
+            hint: 'This helps the bot describe your services naturally.'
+        }
+    ],
+    clinic: [
+        {
+            key: 'doctor_availability',
+            question: 'What should we say about doctor availability or consultation slots?',
+            placeholder: 'Example: Consultation is available Monday to Saturday, 10 AM to 1 PM and 5 PM to 8 PM.',
+            hint: 'Useful for clinics, dentists, and other medical practices.'
+        },
+        {
+            key: 'emergency_notice',
+            question: 'What is the right response for urgent or emergency inquiries?',
+            placeholder: 'Example: For emergencies, please call immediately or visit the nearest hospital. Online replies are not for emergency care.',
+            hint: 'This keeps auto replies safer for time-sensitive medical queries.'
+        }
+    ],
+    restaurant: [
+        {
+            key: 'menu_highlights',
+            question: 'What menu items or specialties should we mention in quick replies?',
+            placeholder: 'Example: South Indian breakfast, thali meals, fresh juices, and family combos.',
+            hint: 'Great for cafes, restaurants, and cloud kitchens.'
+        },
+        {
+            key: 'delivery_policy',
+            question: 'How should we answer delivery, takeaway, or dine-in questions?',
+            placeholder: 'Example: Dine-in and takeaway are available. Delivery is available within 5 km from 11 AM to 10 PM.',
+            hint: 'Helps set expectations before a customer orders.'
+        }
+    ],
+    retail: [
+        {
+            key: 'product_categories',
+            question: 'Which product categories should we mention in replies?',
+            placeholder: 'Example: Mobile accessories, Bluetooth devices, tempered glass, and chargers.',
+            hint: 'Useful for stores and product-led businesses.'
+        },
+        {
+            key: 'stock_check',
+            question: 'How should we respond when customers ask if an item is in stock?',
+            placeholder: 'Example: Please share the product name or photo and we will confirm stock availability quickly.',
+            hint: 'This gives the auto reply a consistent stock-check response.'
+        }
+    ],
+    coaching: [
+        {
+            key: 'course_info',
+            question: 'What should we say about courses, classes, or batches?',
+            placeholder: 'Example: We offer spoken English, IELTS, and interview preparation in weekday and weekend batches.',
+            hint: 'Useful for coaching centers, tutors, and institutes.'
+        },
+        {
+            key: 'demo_policy',
+            question: 'Do you offer demo classes, counselling, or trial sessions?',
+            placeholder: 'Example: Yes, one counselling call is free before enrollment.',
+            hint: 'This is often one of the first things students ask.'
+        }
+    ]
 };
 
 function getToastHost() {
@@ -77,6 +185,77 @@ function buildQuery(params) {
     });
     const qs = search.toString();
     return qs ? `?${qs}` : '';
+}
+
+function normalizeProfessionKey(value) {
+    const text = String(value || '').trim().toLowerCase();
+    if (!text) return 'default';
+    if (text.includes('salon') || text.includes('beauty') || text.includes('spa') || text.includes('barber')) return 'salon';
+    if (text.includes('clinic') || text.includes('doctor') || text.includes('dental') || text.includes('hospital')) return 'clinic';
+    if (text.includes('restaurant') || text.includes('cafe') || text.includes('food') || text.includes('bakery')) return 'restaurant';
+    if (text.includes('shop') || text.includes('store') || text.includes('retail') || text.includes('mobile')) return 'retail';
+    if (text.includes('coach') || text.includes('tuition') || text.includes('class') || text.includes('education') || text.includes('training')) return 'coaching';
+    return 'default';
+}
+
+function getAutoReplyQuestions(profile) {
+    const profession = profile?.tenant?.industry || profile?.user?.profession || '';
+    const variant = normalizeProfessionKey(profession);
+    return [...AUTO_REPLY_PROMPT_LIBRARY.default, ...(AUTO_REPLY_PROMPT_LIBRARY[variant] || [])];
+}
+
+function findKnowledgeBaseAnswer(entries, prompt) {
+    const match = (entries || []).find((item) => String(item.question || '').trim() === prompt.question);
+    return match ? String(match.answer || '').trim() : '';
+}
+
+function computeAutoReplyProgress(profile, entries) {
+    const prompts = getAutoReplyQuestions(profile);
+    const answered = prompts.filter((prompt) => findKnowledgeBaseAnswer(entries, prompt)).length;
+    const pending = prompts.filter((prompt) => !findKnowledgeBaseAnswer(entries, prompt));
+    return {
+        prompts,
+        pending,
+        answered,
+        total: prompts.length,
+        profession: profile?.tenant?.industry || profile?.user?.profession || 'your business'
+    };
+}
+
+async function upsertKnowledgeBaseAnswer(existingEntries, prompt, answer) {
+    const existing = (existingEntries || []).find((item) => String(item.question || '').trim() === prompt.question);
+    if (existing?.id) {
+        return authedRequest(`/api/knowledge-base/${existing.id}`, {
+            method: 'PUT',
+            body: {
+                question: prompt.question,
+                answer
+            }
+        });
+    }
+
+    return authedRequest('/api/knowledge-base', {
+        method: 'POST',
+        body: {
+            question: prompt.question,
+            answer
+        }
+    });
+}
+
+async function loadAutoReplySetupData(forceRefresh = false) {
+    if (!forceRefresh && state.autoReplySetupCache) {
+        return state.autoReplySetupCache;
+    }
+
+    const [profile, entries, autoReplySettings] = await Promise.all([
+        authedRequest('/api/settings/profile'),
+        authedRequest('/api/knowledge-base'),
+        authedRequest('/api/auto-reply/settings')
+    ]);
+
+    state.autoReplySetupCache = { profile, entries, autoReplySettings };
+    return state.autoReplySetupCache;
 }
 
 async function authedRequest(endpoint, options = {}) {
@@ -172,6 +351,7 @@ async function switchModule(moduleName) {
         'menu-builder': renderMenuBuilderModule,
         appointments: renderAppointmentsModule,
         leads: renderLeadsModule,
+        posts: renderPostsModule,
         'knowledge-base': renderKnowledgeBaseModule,
         'automation-rules': renderAutomationRulesModule,
         channels: renderChannelsModule,
@@ -970,19 +1150,443 @@ async function renderLeadsModule() {
 
     await loadLeads();
 }
+
+async function renderPostsModule() {
+    setRootHtml(`
+        <section class="card stack">
+            <h2>Social Posts</h2>
+            <p>Create drafts, schedule posts, or publish immediately to connected Facebook and Instagram channels.</p>
+            <input id="postId" type="hidden">
+            <div class="form-grid">
+                <select id="postPlatform">
+                    <option value="facebook">Facebook</option>
+                    <option value="instagram">Instagram</option>
+                </select>
+                <input id="postScheduleAt" type="datetime-local">
+                <input id="postMediaUrl" class="wide" placeholder="Public image URL (required for Instagram publishing)">
+                <textarea id="postContent" class="wide" placeholder="Write your post caption or message"></textarea>
+            </div>
+            <div class="actions">
+                <button class="btn" id="savePostBtn" type="button">Save Draft / Schedule</button>
+                <button class="btn btn-secondary" id="publishPostBtn" type="button">Publish Now</button>
+                <button class="btn btn-secondary" id="resetPostBtn" type="button">Reset</button>
+            </div>
+        </section>
+        <section class="card stack">
+            <div class="toolbar">
+                <select id="postStatusFilter">
+                    <option value="">All Statuses</option>
+                    <option value="draft">Draft</option>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="retrying">Retrying</option>
+                    <option value="posted">Posted</option>
+                    <option value="failed">Failed</option>
+                </select>
+                <button class="btn btn-secondary" id="refreshPostsBtn" type="button">Refresh</button>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Platform</th>
+                            <th>Content</th>
+                            <th>Status</th>
+                            <th>Scheduled</th>
+                            <th>Posted</th>
+                            <th>Error</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="postsTable"></tbody>
+                </table>
+            </div>
+            <div id="postAttemptsPanel" class="empty-state">Select a post to view recent publish attempts.</div>
+        </section>
+    `);
+
+    const table = document.getElementById('postsTable');
+    const attemptsPanel = document.getElementById('postAttemptsPanel');
+
+    function resetPostForm() {
+        document.getElementById('postId').value = '';
+        document.getElementById('postPlatform').value = 'facebook';
+        document.getElementById('postScheduleAt').value = '';
+        document.getElementById('postMediaUrl').value = '';
+        document.getElementById('postContent').value = '';
+    }
+
+    function collectPostPayload() {
+        const platform = document.getElementById('postPlatform').value;
+        const content = document.getElementById('postContent').value.trim();
+        const mediaUrl = document.getElementById('postMediaUrl').value.trim();
+        const scheduleAt = document.getElementById('postScheduleAt').value;
+        return {
+            platform,
+            content,
+            scheduled_at: scheduleAt ? new Date(scheduleAt).toISOString() : null,
+            media_urls: mediaUrl ? [mediaUrl] : []
+        };
+    }
+
+    async function loadAttempts(postId) {
+        try {
+            const attempts = await authedRequest(`/api/posts/${postId}/attempts`);
+            if (!attempts.length) {
+                attemptsPanel.innerHTML = '<div class="empty-state">No attempts recorded yet for this post.</div>';
+                return;
+            }
+
+            attemptsPanel.innerHTML = `
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Error</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${attempts.map((attempt) => `
+                                <tr>
+                                    <td>${escapeHtml(attempt.status || '-')}</td>
+                                    <td>${escapeHtml(attempt.error || '-')}</td>
+                                    <td>${formatDate(attempt.created_at)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } catch (error) {
+            notifyError(error);
+        }
+    }
+
+    async function loadPosts() {
+        try {
+            const status = document.getElementById('postStatusFilter').value;
+            const posts = await authedRequest(`/api/posts${buildQuery({ status })}`);
+
+            if (!posts.length) {
+                table.innerHTML = '<tr><td colspan="7"><div class="empty-state">No posts created yet.</div></td></tr>';
+                return;
+            }
+
+            table.innerHTML = posts.map((post) => `
+                <tr>
+                    <td>${escapeHtml(post.platform || '-')}</td>
+                    <td>${escapeHtml(post.content || '-')}</td>
+                    <td><span class="status-pill">${escapeHtml(post.status || '-')}</span></td>
+                    <td>${formatDate(post.scheduled_at)}</td>
+                    <td>${formatDate(post.posted_at)}</td>
+                    <td>${escapeHtml(post.last_error || '-')}</td>
+                    <td>
+                        <button class="btn btn-secondary" data-post-edit="${post.id}" type="button">Edit</button>
+                        <button class="btn btn-secondary" data-post-publish="${post.id}" type="button">Publish</button>
+                        <button class="btn btn-secondary" data-post-attempts="${post.id}" type="button">Attempts</button>
+                        <button class="btn btn-danger" data-post-delete="${post.id}" type="button">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+
+            table.querySelectorAll('[data-post-edit]').forEach((button) => {
+                const post = posts.find((item) => item.id === button.dataset.postEdit);
+                if (!post) return;
+
+                button.addEventListener('click', () => {
+                    document.getElementById('postId').value = post.id;
+                    document.getElementById('postPlatform').value = post.platform || 'facebook';
+                    document.getElementById('postScheduleAt').value = post.scheduled_at ? new Date(post.scheduled_at).toISOString().slice(0, 16) : '';
+                    document.getElementById('postMediaUrl').value = Array.isArray(post.media_urls) ? (post.media_urls[0] || '') : '';
+                    document.getElementById('postContent').value = post.content || '';
+                    attemptsPanel.innerHTML = '<div class="empty-state">Editing selected post.</div>';
+                });
+            });
+        } catch (error) {
+            notifyError(error);
+        }
+    }
+
+    document.getElementById('savePostBtn').addEventListener('click', async () => {
+        const postId = document.getElementById('postId').value;
+        const payload = collectPostPayload();
+
+        try {
+            if (postId) {
+                await authedRequest(`/api/posts/${postId}`, { method: 'PUT', body: payload });
+            } else {
+                await authedRequest('/api/posts', { method: 'POST', body: payload });
+            }
+            notifySuccess('Post saved successfully.');
+            resetPostForm();
+            await loadPosts();
+        } catch (error) {
+            notifyError(error);
+        }
+    });
+
+    document.getElementById('publishPostBtn').addEventListener('click', async () => {
+        try {
+            const postId = document.getElementById('postId').value;
+            if (postId) {
+                await authedRequest(`/api/posts/${postId}/publish`, { method: 'POST' });
+            } else {
+                const created = await authedRequest('/api/posts', { method: 'POST', body: collectPostPayload() });
+                await authedRequest(`/api/posts/${created.post.id}/publish`, { method: 'POST' });
+            }
+            notifySuccess('Post queued for publishing.');
+            resetPostForm();
+            await loadPosts();
+        } catch (error) {
+            notifyError(error);
+        }
+    });
+
+    document.getElementById('resetPostBtn').addEventListener('click', resetPostForm);
+    document.getElementById('refreshPostsBtn').addEventListener('click', loadPosts);
+    document.getElementById('postStatusFilter').addEventListener('change', loadPosts);
+
+    table.addEventListener('click', async (event) => {
+        const publishButton = event.target.closest('[data-post-publish]');
+        if (publishButton) {
+            try {
+                await authedRequest(`/api/posts/${publishButton.dataset.postPublish}/publish`, { method: 'POST' });
+                notifySuccess('Post queued for publishing.');
+                await loadPosts();
+            } catch (error) {
+                notifyError(error);
+            }
+            return;
+        }
+
+        const attemptsButton = event.target.closest('[data-post-attempts]');
+        if (attemptsButton) {
+            await loadAttempts(attemptsButton.dataset.postAttempts);
+            return;
+        }
+
+        const deleteButton = event.target.closest('[data-post-delete]');
+        if (!deleteButton) return;
+
+        const confirmed = window.confirm('Delete this post?');
+        if (!confirmed) return;
+
+        try {
+            await authedRequest(`/api/posts/${deleteButton.dataset.postDelete}`, { method: 'DELETE' });
+            notifySuccess('Post deleted.');
+            await loadPosts();
+            attemptsPanel.innerHTML = '<div class="empty-state">Select a post to view recent publish attempts.</div>';
+        } catch (error) {
+            notifyError(error);
+        }
+    });
+
+    resetPostForm();
+    await loadPosts();
+}
+async function openAutoReplySetupPrompt() {
+    if (state.autoReplyPromptOpen) return;
+
+    const { profile, entries } = await loadAutoReplySetupData();
+    const progress = computeAutoReplyProgress(profile, entries);
+    const prompt = progress.pending[0];
+
+    if (!prompt) return;
+
+    state.autoReplyPromptOpen = true;
+
+    const modalHost = document.createElement('div');
+    modalHost.className = 'setup-modal-backdrop';
+
+    const currentIndex = progress.answered + 1;
+    const progressPercent = Math.max(8, Math.round((progress.answered / progress.total) * 100));
+    modalHost.innerHTML = `
+        <div class="setup-modal" role="dialog" aria-modal="true" aria-labelledby="autoReplyPromptTitle">
+            <h3 id="autoReplyPromptTitle">Complete your auto reply setup</h3>
+            <p>We will keep asking the important questions for ${escapeHtml(progress.profession)} until your reply assistant has enough business context.</p>
+            <div class="setup-progress"><span style="width:${progressPercent}%"></span></div>
+            <div class="setup-modal-meta">
+                <span>Question ${currentIndex} of ${progress.total}</span>
+                <span>${progress.total - progress.answered} remaining</span>
+            </div>
+            <label class="prompt-label" for="autoReplyPromptAnswer">${escapeHtml(prompt.question)}</label>
+            <p>${escapeHtml(prompt.hint || '')}</p>
+            <textarea id="autoReplyPromptAnswer" placeholder="${escapeHtml(prompt.placeholder || 'Write the exact business answer here...')}"></textarea>
+            <div class="actions" style="margin-top:16px;">
+                <button class="btn" id="autoReplyPromptSaveBtn" type="button">Save And Continue</button>
+                <button class="btn btn-secondary" id="autoReplyPromptSettingsBtn" type="button">Open Settings</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modalHost);
+
+    const answerInput = document.getElementById('autoReplyPromptAnswer');
+    if (answerInput) answerInput.focus();
+
+    const closeModal = () => {
+        state.autoReplyPromptOpen = false;
+        modalHost.remove();
+    };
+
+    const saveButton = document.getElementById('autoReplyPromptSaveBtn');
+    if (saveButton) {
+        saveButton.addEventListener('click', async () => {
+            const answer = String(answerInput?.value || '').trim();
+            if (!answer) {
+                showToast('Please answer the question so the auto reply can use exact details.', 'error');
+                if (answerInput) answerInput.focus();
+                return;
+            }
+
+            try {
+                const saved = await upsertKnowledgeBaseAnswer(entries, prompt, answer);
+                const existingIndex = entries.findIndex((item) => String(item.question || '').trim() === prompt.question);
+                if (existingIndex >= 0) {
+                    entries[existingIndex] = { ...entries[existingIndex], answer, updated_at: new Date().toISOString() };
+                } else {
+                    entries.unshift(saved);
+                }
+                closeModal();
+                showToast('Answer saved.', 'success');
+
+                if (state.activeModule === 'knowledge-base') {
+                    await renderKnowledgeBaseModule();
+                }
+
+                await openAutoReplySetupPrompt();
+            } catch (error) {
+                notifyError(error);
+            }
+        });
+    }
+
+    const settingsButton = document.getElementById('autoReplyPromptSettingsBtn');
+    if (settingsButton) {
+        settingsButton.addEventListener('click', async () => {
+            closeModal();
+            await switchModule('settings');
+        });
+    }
+}
+
 async function renderKnowledgeBaseModule() {
-    await renderCrudModule({
-        title: 'Knowledge Base',
-        endpoint: '/api/knowledge-base',
-        fields: [
-            { id: 'kbQuestion', key: 'question', label: 'Question', wide: true },
-            { id: 'kbAnswer', key: 'answer', label: 'Answer', type: 'textarea', wide: true }
-        ],
-        columns: [
-            { key: 'question', label: 'Question' },
-            { key: 'answer', label: 'Answer' },
-            { key: 'created_at', label: 'Created', render: (row) => formatDate(row.created_at) }
-        ]
+    const { profile, entries, autoReplySettings } = await loadAutoReplySetupData();
+
+    const progress = computeAutoReplyProgress(profile, entries);
+    const completionPercent = progress.total ? Math.round((progress.answered / progress.total) * 100) : 100;
+
+    setRootHtml(`
+        <section class="card stack setup-highlight">
+            <h2>Auto Reply Setup</h2>
+            <p>Answer the key questions your customers ask most often. The bot will keep using these exact answers for faster and more reliable replies.</p>
+            <div class="setup-chip-row">
+                <span class="setup-chip ${progress.pending.length ? 'pending' : 'complete'}">${escapeHtml(progress.profession)}</span>
+                <span class="setup-chip ${progress.pending.length ? 'pending' : 'complete'}">${completionPercent}% complete</span>
+                <span class="setup-chip ${autoReplySettings?.enabled ? 'complete' : 'pending'}">${autoReplySettings?.enabled ? 'Auto reply on' : 'Auto reply off'}</span>
+            </div>
+            <div class="actions">
+                <button class="btn" id="continueAutoReplySetupBtn" type="button">${progress.pending.length ? 'Continue Question Setup' : 'Review Answers'}</button>
+                <button class="btn btn-secondary" id="toggleAutoReplyBtn" type="button">${autoReplySettings?.enabled ? 'Disable Auto Reply' : 'Enable Auto Reply'}</button>
+            </div>
+        </section>
+        <section class="setup-grid">
+            <section class="card stack">
+                <h3>Question Coverage</h3>
+                <div class="setup-list" id="autoReplyQuestionList"></div>
+            </section>
+            <section class="setup-sidecard">
+                <section class="card stack">
+                    <h3>Why This Matters</h3>
+                    <ul class="setup-checklist">
+                        <li>Customers get exact answers for timings, booking, pricing, and location.</li>
+                        <li>The reply assistant sounds closer to your real business.</li>
+                        <li>Only unanswered questions remain in the guided popup.</li>
+                    </ul>
+                </section>
+                <section class="card stack">
+                    <h3>Current Setup</h3>
+                    <p class="muted">Answered ${progress.answered} out of ${progress.total} guided questions for ${escapeHtml(progress.profession)}.</p>
+                    <p class="muted">${progress.pending.length ? `${progress.pending.length} questions still need exact answers.` : 'Everything needed for the guided setup is filled in.'}</p>
+                </section>
+            </section>
+        </section>
+    `);
+
+    const list = document.getElementById('autoReplyQuestionList');
+    list.innerHTML = progress.prompts.map((prompt) => {
+        const answer = findKnowledgeBaseAnswer(entries, prompt);
+        return `
+            <article class="setup-question">
+                <strong>${escapeHtml(prompt.question)}</strong>
+                <p>${escapeHtml(prompt.hint || '')}</p>
+                <div class="setup-question-footer">
+                    <span class="setup-answer">${escapeHtml(answer || 'Not answered yet')}</span>
+                    <button class="btn btn-secondary" data-setup-question="${escapeHtml(prompt.key)}" type="button">${answer ? 'Edit Answer' : 'Answer Now'}</button>
+                </div>
+            </article>
+        `;
+    }).join('');
+
+    document.getElementById('continueAutoReplySetupBtn').addEventListener('click', async () => {
+        await openAutoReplySetupPrompt();
+    });
+
+    document.getElementById('toggleAutoReplyBtn').addEventListener('click', async () => {
+        try {
+            await authedRequest('/api/auto-reply/settings', {
+                method: 'PUT',
+                body: {
+                    enabled: !autoReplySettings?.enabled,
+                    ai_enabled: autoReplySettings?.ai_enabled || false,
+                    delay_seconds: autoReplySettings?.delay_seconds || 0
+                }
+            });
+            state.autoReplySetupCache = {
+                ...state.autoReplySetupCache,
+                autoReplySettings: {
+                    ...autoReplySettings,
+                    enabled: !autoReplySettings?.enabled
+                }
+            };
+            notifySuccess(`Auto reply ${autoReplySettings?.enabled ? 'disabled' : 'enabled'} successfully.`);
+            await renderKnowledgeBaseModule();
+        } catch (error) {
+            notifyError(error);
+        }
+    });
+
+    list.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-setup-question]');
+        if (!button) return;
+
+        const prompt = progress.prompts.find((item) => item.key === button.dataset.setupQuestion);
+        if (!prompt) return;
+
+        const existingAnswer = findKnowledgeBaseAnswer(entries, prompt);
+        const nextAnswer = window.prompt(prompt.question, existingAnswer || '');
+        if (nextAnswer === null) return;
+
+        const trimmedAnswer = String(nextAnswer).trim();
+        if (!trimmedAnswer) {
+            notifyError(new Error('Answer cannot be empty.'));
+            return;
+        }
+
+        try {
+            const saved = await upsertKnowledgeBaseAnswer(entries, prompt, trimmedAnswer);
+            const existingIndex = entries.findIndex((item) => String(item.question || '').trim() === prompt.question);
+            if (existingIndex >= 0) {
+                entries[existingIndex] = { ...entries[existingIndex], answer: trimmedAnswer, updated_at: new Date().toISOString() };
+            } else {
+                entries.unshift(saved);
+            }
+            notifySuccess('Answer saved successfully.');
+            await renderKnowledgeBaseModule();
+        } catch (error) {
+            notifyError(error);
+        }
     });
 }
 
@@ -1257,6 +1861,7 @@ async function renderSettingsModule() {
                 method: 'PUT',
                 body: payload
             });
+            state.autoReplySetupCache = null;
             await loadProfileHeader();
             notifySuccess('Settings updated successfully.');
         } catch (error) {
@@ -1284,6 +1889,7 @@ async function initDashboard() {
     bindGlobalEvents();
     await loadProfileHeader();
     await switchModule(state.activeModule);
+    await openAutoReplySetupPrompt();
 }
 
 if (document.readyState === 'loading') {

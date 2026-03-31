@@ -1,20 +1,8 @@
-# LeadFlow AI Task Tracking
+# Privacy Policy Implementation
 
-## README Enhancement Complete ✅
-
-**All steps done:**
-- ✅ TODO.md created/updated
-- ✅ Header, badges, intro cleaned
-- ✅ Features expanded (SaaS, realtime, etc.)
-- ✅ Tech stack table + deps
-- ✅ Migration artifacts removed
-- ✅ Env vars consolidated, .env.example added
-- ✅ API endpoints detailed tables
-- ✅ Project structure full tree
-- ✅ Deployment options
-- ✅ Old sections streamlined (troubleshooting kept)
-
-README.md is now complete, professional, and covers setup, features, APIs, structure, deployment.
-
-Project ready for use/contribution!"
-
+## Steps:
+- [x] 1. Create views/privacy.html with simple privacy policy page
+- [x] 2. Edit server.js to add GET /privacy route serving the HTML
+- [ ] 3. Test the page
+- [ ] 4. Optionally add footer links to other pages
+- [ ] 5. Restart server and verify http://localhost:5000/privacy

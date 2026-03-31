@@ -23,6 +23,7 @@ class API {
         try {
             response = await fetch(`${API_BASE_URL}${endpoint}`, {
                 method,
+                credentials: 'same-origin',
                 headers: finalHeaders,
                 body: body !== undefined ? JSON.stringify(body) : undefined
             });
@@ -55,6 +56,7 @@ class API {
 
     static async download(endpoint, token) {
         const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+            credentials: 'same-origin',
             headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
 
@@ -80,6 +82,12 @@ class API {
         return this.request('/api/forgot-password', {
             method: 'POST',
             body: { email }
+        });
+    }
+
+    static logout() {
+        return this.request('/api/logout', {
+            method: 'POST'
         });
     }
 

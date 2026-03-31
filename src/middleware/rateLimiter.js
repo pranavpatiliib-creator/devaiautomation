@@ -40,8 +40,15 @@ const oauthCallbackLimiter = createLimiter({
     message: 'Too many OAuth callback attempts. Please retry in a few minutes.'
 });
 
+const webhookInboundLimiter = createLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 600,
+    message: 'Too many webhook requests. Please retry later.'
+});
+
 module.exports = limiter;
 module.exports.connectionReadLimiter = connectionReadLimiter;
 module.exports.connectionWriteLimiter = connectionWriteLimiter;
 module.exports.oauthStartLimiter = oauthStartLimiter;
 module.exports.oauthCallbackLimiter = oauthCallbackLimiter;
+module.exports.webhookInboundLimiter = webhookInboundLimiter;

@@ -50,13 +50,19 @@ function getUserId() {
     return payload?.id || null;
 }
 
-function logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('tenantId');
-    localStorage.removeItem('businessName');
-    localStorage.removeItem('name');
-    localStorage.removeItem('profession');
-    window.location = '/login';
+async function logout() {
+    try {
+        await API.logout();
+    } catch (error) {
+        console.error('Logout request failed:', error);
+    } finally {
+        localStorage.removeItem('token');
+        localStorage.removeItem('tenantId');
+        localStorage.removeItem('businessName');
+        localStorage.removeItem('name');
+        localStorage.removeItem('profession');
+        window.location = '/login';
+    }
 }
 
 async function signup() {

@@ -1,5 +1,6 @@
 const supabase = require('../config/supabase');
 const logger = require('../utils/appLogger');
+const { sendMetaTextMessage } = require('./metaChannelService');
 // Service layer for auto-reply functionality, including settings management, rule matching, job queuing, and processing.
 function computeBackoffSeconds(attempt) {
     const base = Math.min(60 * 10, 3 * Math.pow(2, Math.max(0, attempt))); // cap 10m
@@ -134,9 +135,19 @@ async function enqueueAutoReplyJob({
     return { enqueued: true, run_at: runAt };
 }
 // Placeholder dispatch function - in real implementation, this would call the appropriate platform API to send the message.
-async function dispatchReply(_job) {
-    // Platform-specific dispatch goes here. For now we only persist the outgoing conversation row.
-    return { success: true, external_id: null };
+async function dispatchReply(job) {
+    const channel = String(job?.channel || '').toLowerCase();
+
+    if (channel === 'facebook' || channel === 'instagram') {
+        return sendMetaTextMessage({
+            tenantId: job.tenant_id,
+            channel,
+            recipientId: job.sender_id,
+            text: job.reply_text
+        });
+    }
+
+    throw new Error(`Auto-reply dispatch is not implemented for channel: ${channel || 'unknown'}`);
 }
 // Background job processor to be called by a scheduler (e.g. every minute) to process due auto-replies.
 async function processDueAutoReplies({ limit = 10 } = {}) {
@@ -174,7 +185,7 @@ async function processDueAutoReplies({ limit = 10 } = {}) {
                 throw new Error(result?.error || 'Reply dispatch failed');
             }
 
-             const { error: convError } = await supabase.from('conversations').insert({
+            const { error: convError } = await supabase.from('conversations').insert({
                 tenant_id: job.tenant_id,
                 customer_id: job.customer_id,
                 channel: job.channel,
@@ -183,7 +194,7 @@ async function processDueAutoReplies({ limit = 10 } = {}) {
                 direction: 'outgoing',
                 intent: 'auto_reply',
                 state: 'auto_reply',
-                message_id: null
+                message_id: result.external_id || null
             });
             if (convError && convError.code !== 'PGRST205') throw convError;
 
@@ -242,4 +253,3 @@ module.exports = {
     enqueueAutoReplyJob,
     processDueAutoReplies
 };
-

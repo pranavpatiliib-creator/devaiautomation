@@ -6,6 +6,59 @@ const supabase = require('./src/config/supabase');
 
 const app = express();
 
+function formatSupabaseStartupError(error) {
+    const parts = [];
+    const message = error?.message || 'Unknown Supabase error';
+    parts.push(message);
+
+    if (error?.details) {
+        parts.push(error.details);
+    }
+
+    const cause = error?.cause;
+    if (cause?.code) {
+        parts.push(`Cause: ${cause.code}`);
+    }
+
+    if (Array.isArray(cause?.errors) && cause.errors.length > 0) {
+        const endpoints = cause.errors
+            .map((item) => {
+                if (!item?.address || !item?.port) return null;
+                return `${item.address}:${item.port}${item.code ? ` (${item.code})` : ''}`;
+            })
+            .filter(Boolean);
+
+        if (endpoints.length > 0) {
+            parts.push(`Endpoints: ${endpoints.join(', ')}`);
+        }
+    }
+
+    if (cause?.code === 'EACCES') {
+        parts.push('Outbound HTTPS access appears blocked by the local environment, firewall, proxy, or sandbox.');
+    }
+
+    return parts.join('\n');
+}
+
+function resolveTrustProxySetting(value) {
+    if (value === undefined || value === null || value === '') {
+        return 1;
+    }
+
+    const normalized = String(value).trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+
+    const asNumber = Number(normalized);
+    if (Number.isFinite(asNumber)) {
+        return asNumber;
+    }
+
+    return value;
+}
+
+app.set('trust proxy', resolveTrustProxySetting(process.env.TRUST_PROXY));
+
 // ================= MIDDLEWARE =================
 const allowedOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
@@ -31,6 +84,7 @@ const leadsRoutes = require('./src/routes/leads');
 const publicRoutes = require('./src/routes/public');
 const saasRoutes = require('./src/routes/saas');
 const metaAuthRoutes = require('./src/routes/metaAuth');
+const metaWebhookRoutes = require('./src/routes/metaWebhooks');
 const postsRoutes = require('./src/routes/posts');
 const autoReplyRoutes = require('./src/routes/autoReply');
 const { startBackgroundRunner } = require('./src/workers/backgroundRunner');
@@ -42,6 +96,7 @@ app.use('/api', saasRoutes);
 app.use('/api', metaAuthRoutes);
 app.use('/api', postsRoutes);
 app.use('/api', autoReplyRoutes);
+app.use('/webhooks', metaWebhookRoutes);
 
 // ================= SERVE VIEWS =================
 // Page routes (must be after API routes to avoid conflicts)
@@ -80,6 +135,11 @@ app.get('/form', (req, res) => {
     res.sendFile(path.join(__dirname, 'views/form.html'));
 });
 
+app.get('/privacy', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(__dirname, 'views/privacy.html'));
+});
+
 // ================= 404 HANDLER =================
 app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
@@ -94,6 +154,11 @@ app.use((err, req, res, next) => {
 
 // ================= SERVER START =================
 async function logSupabaseConnectionStatus() {
+    if (process.env.SUPABASE_SKIP_CONNECTION_CHECK === 'true') {
+        console.log('Skipping Supabase connection check');
+        return;
+    }
+
     try {
         const { error, status, statusText } = await supabase
             .from('users')
@@ -112,7 +177,7 @@ async function logSupabaseConnectionStatus() {
 
         console.log('Supabase connected successfully');
     } catch (error) {
-        console.error('Supabase connection check failed:', error.message);
+        console.error(`Supabase connection check failed:\n${formatSupabaseStartupError(error)}`);
     }
 }
 

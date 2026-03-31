@@ -1,5 +1,9 @@
 const supabase = require('../config/supabase');
 const logger = require('../utils/appLogger');
+const {
+    publishFacebookPost,
+    publishInstagramPost
+} = require('./metaChannelService');
 
 function computeBackoffSeconds(attempt) {
     const base = Math.min(60 * 30, 5 * Math.pow(2, Math.max(0, attempt))); // cap 30m
@@ -22,10 +26,26 @@ async function recordAttempt({ tenantId, postId, status, error, payload }) {
 }
 // Placeholder function to dispatch a post to the appropriate social media platform. In a real implementation, this would contain logic to interface with platform APIs (e.g., Facebook, Twitter, Instagram).
 
-async function dispatchPost(_post) {
-    // Platform integrations are intentionally modular; implement per platform later.
-    // For now, we mark as posted and log the payload for observability.
-    return { success: true, external_id: null };
+async function dispatchPost(post) {
+    const platform = String(post?.platform || '').toLowerCase();
+
+    if (platform === 'facebook') {
+        return publishFacebookPost({
+            tenantId: post.tenant_id,
+            content: post.content,
+            mediaUrls: post.media_urls
+        });
+    }
+
+    if (platform === 'instagram') {
+        return publishInstagramPost({
+            tenantId: post.tenant_id,
+            content: post.content,
+            mediaUrls: post.media_urls
+        });
+    }
+
+    throw new Error(`Posting is not implemented for platform: ${platform || 'unknown'}`);
 }
 // Mark a post as successfully posted, clearing any retry state.
 async function markPostPosted({ tenantId, postId }) {
@@ -138,4 +158,3 @@ async function processDuePosts({ limit = 10 } = {}) {
 module.exports = {
     processDuePosts
 };
-
