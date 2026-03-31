@@ -296,6 +296,120 @@ function setActiveNav(moduleName) {
     });
 }
 
+function renderSidebarLogoBadge() {
+    const badge = document.getElementById('sidebarLogoBadge');
+    if (!badge) return;
+
+    if (state.settingsLogoDataUrl) {
+        badge.innerHTML = `<img src="${escapeHtml(state.settingsLogoDataUrl)}" alt="Business logo">`;
+        badge.classList.add('has-image');
+        return;
+    }
+
+    badge.textContent = '+';
+    badge.classList.remove('has-image');
+}
+
+async function loadLogoState() {
+    try {
+        const profile = await authedRequest('/api/settings/profile');
+        state.settingsLogoDataUrl = profile?.tenant?.business_logo || '';
+        renderSidebarLogoBadge();
+    } catch (error) {
+        console.error('Logo state load failed:', error);
+    }
+}
+
+async function openLogoModal() {
+    const modalHost = document.createElement('div');
+    modalHost.className = 'setup-modal-backdrop';
+    modalHost.innerHTML = `
+        <div class="setup-modal" role="dialog" aria-modal="true" aria-labelledby="logoModalTitle">
+            <h3 id="logoModalTitle">Business Logo</h3>
+            <p>Upload a PNG or JPEG logo. This keeps the settings screen cleaner and lets you manage branding quickly.</p>
+            <div id="logoModalPreview" class="logo-preview empty-state">No logo uploaded</div>
+            <input id="logoModalFile" type="file" accept="image/png,image/jpeg">
+            <div class="actions" style="margin-top:16px;">
+                <button class="btn" id="saveLogoModalBtn" type="button">Save Logo</button>
+                <button class="btn btn-secondary" id="removeLogoModalBtn" type="button">Remove</button>
+                <button class="btn btn-secondary" id="closeLogoModalBtn" type="button">Close</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modalHost);
+
+    const preview = document.getElementById('logoModalPreview');
+    const fileInput = document.getElementById('logoModalFile');
+    let currentLogo = state.settingsLogoDataUrl || '';
+
+    function renderPreview(dataUrl) {
+        if (!preview) return;
+        if (!dataUrl) {
+            preview.className = 'logo-preview empty-state';
+            preview.innerHTML = 'No logo uploaded';
+            return;
+        }
+
+        preview.className = 'logo-preview';
+        preview.innerHTML = `<img src="${escapeHtml(dataUrl)}" alt="Business logo preview">`;
+    }
+
+    renderPreview(currentLogo);
+
+    const closeModal = () => {
+        modalHost.remove();
+    };
+
+    fileInput.addEventListener('change', async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        if (!['image/png', 'image/jpeg'].includes(file.type)) {
+            notifyError(new Error('Please upload only PNG or JPEG logo files.'));
+            event.target.value = '';
+            return;
+        }
+
+        try {
+            currentLogo = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('Failed to read logo file.'));
+                reader.onload = () => resolve(String(reader.result || ''));
+                reader.readAsDataURL(file);
+            });
+            renderPreview(currentLogo);
+        } catch (error) {
+            notifyError(error);
+        }
+    });
+
+    document.getElementById('removeLogoModalBtn').addEventListener('click', () => {
+        currentLogo = '';
+        fileInput.value = '';
+        renderPreview('');
+    });
+
+    document.getElementById('closeLogoModalBtn').addEventListener('click', closeModal);
+
+    document.getElementById('saveLogoModalBtn').addEventListener('click', async () => {
+        try {
+            await authedRequest('/api/settings/profile', {
+                method: 'PUT',
+                body: {
+                    businessLogo: currentLogo
+                }
+            });
+            state.settingsLogoDataUrl = currentLogo;
+            renderSidebarLogoBadge();
+            notifySuccess('Logo updated successfully.');
+            closeModal();
+        } catch (error) {
+            notifyError(error);
+        }
+    });
+}
+
 function notifyError(error) {
     showToast(error?.message || 'Something went wrong', 'error');
 }
@@ -324,6 +438,11 @@ function bindGlobalEvents() {
     const logoutBtn = document.getElementById('logoutBtn');
     if (logoutBtn) {
         logoutBtn.addEventListener('click', logout);
+    }
+
+    const logoBtn = document.getElementById('openLogoModalBtn');
+    if (logoBtn) {
+        logoBtn.addEventListener('click', openLogoModal);
     }
 
     const sidebar = document.getElementById('sidebarNav');
@@ -1893,19 +2012,6 @@ async function renderSettingsModule() {
                 <input id="settingFbPage" placeholder="Facebook Page ID">
                 <input id="settingInstagram" placeholder="Instagram ID">
             </div>
-            <section class="logo-upload-panel">
-                <div class="logo-upload-copy">
-                    <h3>Business Logo</h3>
-                    <p class="muted">Upload a PNG or JPEG logo for your business profile.</p>
-                </div>
-                <div class="logo-upload-controls">
-                    <div id="settingsLogoPreview" class="logo-preview empty-state">No logo uploaded</div>
-                    <input id="settingsLogoFile" type="file" accept="image/png,image/jpeg">
-                    <div class="actions">
-                        <button class="btn btn-secondary" id="removeLogoBtn" type="button">Remove Logo</button>
-                    </div>
-                </div>
-            </section>
             <div class="actions">
                 <button class="btn" id="saveSettingsBtn" type="button">Save Settings</button>
             </div>
@@ -1919,20 +2025,6 @@ async function renderSettingsModule() {
             </div>
         </section>
     `);
-
-    function renderLogoPreview(dataUrl) {
-        const preview = document.getElementById('settingsLogoPreview');
-        if (!preview) return;
-
-        if (!dataUrl) {
-            preview.className = 'logo-preview empty-state';
-            preview.innerHTML = 'No logo uploaded';
-            return;
-        }
-
-        preview.className = 'logo-preview';
-        preview.innerHTML = `<img src="${escapeHtml(dataUrl)}" alt="Business logo preview">`;
-    }
 
     try {
         const profile = await authedRequest('/api/settings/profile');
@@ -1950,45 +2042,13 @@ async function renderSettingsModule() {
         document.getElementById('settingFbPage').value = tenant.fb_page_id || '';
         document.getElementById('settingInstagram').value = tenant.instagram_id || '';
         state.settingsLogoDataUrl = tenant.business_logo || '';
-        renderLogoPreview(state.settingsLogoDataUrl);
+        renderSidebarLogoBadge();
 
         const userId = getUserId();
         document.getElementById('leadFormLink').value = `${window.location.origin}/form?user=${encodeURIComponent(userId)}`;
     } catch (error) {
         notifyError(error);
     }
-
-    document.getElementById('settingsLogoFile').addEventListener('change', async (event) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        const allowedTypes = ['image/png', 'image/jpeg'];
-        if (!allowedTypes.includes(file.type)) {
-            notifyError(new Error('Please upload only PNG or JPEG logo files.'));
-            event.target.value = '';
-            return;
-        }
-
-        try {
-            const dataUrl = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onerror = () => reject(new Error('Failed to read logo file.'));
-                reader.onload = () => resolve(reader.result);
-                reader.readAsDataURL(file);
-            });
-
-            state.settingsLogoDataUrl = String(dataUrl || '');
-            renderLogoPreview(state.settingsLogoDataUrl);
-        } catch (error) {
-            notifyError(error);
-        }
-    });
-
-    document.getElementById('removeLogoBtn').addEventListener('click', () => {
-        state.settingsLogoDataUrl = '';
-        document.getElementById('settingsLogoFile').value = '';
-        renderLogoPreview('');
-    });
 
     document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
         const payload = {
@@ -2002,8 +2062,7 @@ async function renderSettingsModule() {
             website: document.getElementById('settingWebsite').value.trim(),
             whatsappNumber: document.getElementById('settingWhatsapp').value.trim(),
             fbPageId: document.getElementById('settingFbPage').value.trim(),
-            instagramId: document.getElementById('settingInstagram').value.trim(),
-            businessLogo: state.settingsLogoDataUrl
+            instagramId: document.getElementById('settingInstagram').value.trim()
         };
 
         try {
