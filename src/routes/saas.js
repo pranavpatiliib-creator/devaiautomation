@@ -276,7 +276,8 @@ router.get('/me', async (req, res) => {
                 industry: req.tenant.industry,
                 whatsapp_number: req.tenant.whatsapp_number,
                 fb_page_id: req.tenant.fb_page_id,
-                instagram_id: req.tenant.instagram_id
+                instagram_id: req.tenant.instagram_id,
+                business_logo: req.tenant.business_logo || null
             }
         });
     } catch (error) {
@@ -1557,7 +1558,8 @@ router.get('/settings/profile', async (req, res) => {
                 industry: req.tenant.industry,
                 whatsapp_number: req.tenant.whatsapp_number,
                 fb_page_id: req.tenant.fb_page_id,
-                instagram_id: req.tenant.instagram_id
+                instagram_id: req.tenant.instagram_id,
+                business_logo: req.tenant.business_logo || null
             }
         });
     } catch (error) {
@@ -1592,6 +1594,9 @@ router.put('/settings/profile', async (req, res) => {
         }
         if (req.body.instagram_id !== undefined || req.body.instagramId !== undefined) {
             tenantUpdates.instagram_id = req.body.instagram_id || req.body.instagramId;
+        }
+        if (req.body.business_logo !== undefined || req.body.businessLogo !== undefined) {
+            tenantUpdates.business_logo = req.body.business_logo || req.body.businessLogo || null;
         }
 
         if (Object.keys(userUpdates).length > 0) {

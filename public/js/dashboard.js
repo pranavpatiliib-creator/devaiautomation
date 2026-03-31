@@ -5,6 +5,7 @@ const state = {
     channelsOAuthListenerBound: false,
     autoReplyPromptOpen: false,
     autoReplySetupCache: null,
+    settingsLogoDataUrl: '',
     charts: {
         messages: null,
         leads: null
@@ -1892,6 +1893,19 @@ async function renderSettingsModule() {
                 <input id="settingFbPage" placeholder="Facebook Page ID">
                 <input id="settingInstagram" placeholder="Instagram ID">
             </div>
+            <section class="logo-upload-panel">
+                <div class="logo-upload-copy">
+                    <h3>Business Logo</h3>
+                    <p class="muted">Upload a PNG or JPEG logo for your business profile.</p>
+                </div>
+                <div class="logo-upload-controls">
+                    <div id="settingsLogoPreview" class="logo-preview empty-state">No logo uploaded</div>
+                    <input id="settingsLogoFile" type="file" accept="image/png,image/jpeg">
+                    <div class="actions">
+                        <button class="btn btn-secondary" id="removeLogoBtn" type="button">Remove Logo</button>
+                    </div>
+                </div>
+            </section>
             <div class="actions">
                 <button class="btn" id="saveSettingsBtn" type="button">Save Settings</button>
             </div>
@@ -1905,6 +1919,20 @@ async function renderSettingsModule() {
             </div>
         </section>
     `);
+
+    function renderLogoPreview(dataUrl) {
+        const preview = document.getElementById('settingsLogoPreview');
+        if (!preview) return;
+
+        if (!dataUrl) {
+            preview.className = 'logo-preview empty-state';
+            preview.innerHTML = 'No logo uploaded';
+            return;
+        }
+
+        preview.className = 'logo-preview';
+        preview.innerHTML = `<img src="${escapeHtml(dataUrl)}" alt="Business logo preview">`;
+    }
 
     try {
         const profile = await authedRequest('/api/settings/profile');
@@ -1921,12 +1949,46 @@ async function renderSettingsModule() {
         document.getElementById('settingWhatsapp').value = tenant.whatsapp_number || '';
         document.getElementById('settingFbPage').value = tenant.fb_page_id || '';
         document.getElementById('settingInstagram').value = tenant.instagram_id || '';
+        state.settingsLogoDataUrl = tenant.business_logo || '';
+        renderLogoPreview(state.settingsLogoDataUrl);
 
         const userId = getUserId();
         document.getElementById('leadFormLink').value = `${window.location.origin}/form?user=${encodeURIComponent(userId)}`;
     } catch (error) {
         notifyError(error);
     }
+
+    document.getElementById('settingsLogoFile').addEventListener('change', async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const allowedTypes = ['image/png', 'image/jpeg'];
+        if (!allowedTypes.includes(file.type)) {
+            notifyError(new Error('Please upload only PNG or JPEG logo files.'));
+            event.target.value = '';
+            return;
+        }
+
+        try {
+            const dataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('Failed to read logo file.'));
+                reader.onload = () => resolve(reader.result);
+                reader.readAsDataURL(file);
+            });
+
+            state.settingsLogoDataUrl = String(dataUrl || '');
+            renderLogoPreview(state.settingsLogoDataUrl);
+        } catch (error) {
+            notifyError(error);
+        }
+    });
+
+    document.getElementById('removeLogoBtn').addEventListener('click', () => {
+        state.settingsLogoDataUrl = '';
+        document.getElementById('settingsLogoFile').value = '';
+        renderLogoPreview('');
+    });
 
     document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
         const payload = {
@@ -1940,7 +2002,8 @@ async function renderSettingsModule() {
             website: document.getElementById('settingWebsite').value.trim(),
             whatsappNumber: document.getElementById('settingWhatsapp').value.trim(),
             fbPageId: document.getElementById('settingFbPage').value.trim(),
-            instagramId: document.getElementById('settingInstagram').value.trim()
+            instagramId: document.getElementById('settingInstagram').value.trim(),
+            businessLogo: state.settingsLogoDataUrl
         };
 
         try {

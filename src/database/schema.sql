@@ -234,6 +234,7 @@ alter table users add column if not exists website text;
 alter table offers add column if not exists is_active boolean default true;
 alter table channel_connections add column if not exists is_active boolean default true;
 alter table channel_connections add column if not exists metadata jsonb;
+alter table tenants add column if not exists business_logo text;
 
 -------------------------------------------------------
 -- AI RESPONSES
