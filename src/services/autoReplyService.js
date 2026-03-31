@@ -67,6 +67,99 @@ async function getKnowledgeBaseContext(tenantId) {
         .filter((entry) => entry.question && entry.answer);
 }
 
+async function getServicesContext(tenantId) {
+    const { data, error } = await supabase
+        .from('services')
+        .select('service_name,description,price,discount')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+    if (error) {
+        if (error.code === 'PGRST205') return [];
+        throw error;
+    }
+
+    return data || [];
+}
+
+async function getOffersContext(tenantId) {
+    const { data, error } = await supabase
+        .from('offers')
+        .select('title,description,discount,valid_until,is_active')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+    if (error) {
+        if (error.code === 'PGRST205') return [];
+        throw error;
+    }
+
+    return data || [];
+}
+
+async function getProductsContext(tenantId) {
+    const { data, error } = await supabase
+        .from('products')
+        .select('product_name,category,description,price,stock_quantity,is_active')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+    if (error) {
+        if (error.code === 'PGRST205') return [];
+        throw error;
+    }
+
+    return data || [];
+}
+
+async function getAppointmentsContext(tenantId) {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data, error } = await supabase
+        .from('appointments')
+        .select('appointment_date,appointment_time,status,notes,service_id')
+        .eq('tenant_id', tenantId)
+        .gte('appointment_date', today)
+        .order('appointment_date', { ascending: true })
+        .order('appointment_time', { ascending: true })
+        .limit(10);
+
+    if (error) {
+        if (error.code === 'PGRST205') return [];
+        throw error;
+    }
+
+    return data || [];
+}
+
+async function getRecentConversationContext(tenantId, senderId) {
+    if (!senderId) return [];
+
+    const { data, error } = await supabase
+        .from('conversations')
+        .select('message,direction,created_at')
+        .eq('tenant_id', tenantId)
+        .eq('sender_id', senderId)
+        .order('created_at', { ascending: false })
+        .limit(8);
+
+    if (error) {
+        if (error.code === 'PGRST205') return [];
+        throw error;
+    }
+
+    return (data || []).reverse();
+}
+
+function formatListBlock(title, rows, formatter) {
+    if (!rows.length) return `${title}: none`;
+    return `${title}:\n${rows.map((row, index) => `${index + 1}. ${formatter(row)}`).join('\n')}`;
+}
+
 function extractOutputText(payload) {
     if (typeof payload?.output_text === 'string' && payload.output_text.trim()) {
         return payload.output_text.trim();
@@ -84,16 +177,60 @@ function extractOutputText(payload) {
     return textParts.join('\n').trim();
 }
 
-async function generateAiReply(tenantId, incomingText) {
+async function generateAiReply(tenantId, incomingText, senderId) {
     const text = String(incomingText || '').trim();
     if (!text) return null;
 
-    const knowledge = await getKnowledgeBaseContext(tenantId);
-    if (!knowledge.length || !OPENAI_API_KEY) return null;
+    if (!OPENAI_API_KEY) return null;
+
+    const [knowledge, services, offers, products, appointments, recentConversation] = await Promise.all([
+        getKnowledgeBaseContext(tenantId),
+        getServicesContext(tenantId),
+        getOffersContext(tenantId),
+        getProductsContext(tenantId),
+        getAppointmentsContext(tenantId),
+        getRecentConversationContext(tenantId, senderId)
+    ]);
+
+    if (!knowledge.length && !services.length && !offers.length && !products.length && !appointments.length) {
+        return null;
+    }
 
     const knowledgeBlock = knowledge
         .map((entry) => `Q: ${entry.question}\nA: ${entry.answer}`)
         .join('\n\n');
+
+    const servicesBlock = formatListBlock('Services', services, (entry) => {
+        const price = entry.price !== null && entry.price !== undefined ? `price ${entry.price}` : 'price on request';
+        const discount = entry.discount ? `, discount ${entry.discount}%` : '';
+        const description = entry.description ? `, ${entry.description}` : '';
+        return `${entry.service_name || 'Service'} (${price}${discount})${description}`;
+    });
+
+    const offersBlock = formatListBlock('Active offers', offers, (entry) => {
+        const discount = entry.discount ? `${entry.discount}% off` : 'offer available';
+        const validity = entry.valid_until ? ` valid until ${entry.valid_until}` : '';
+        const description = entry.description ? `, ${entry.description}` : '';
+        return `${entry.title || 'Offer'} (${discount}${validity})${description}`;
+    });
+
+    const productsBlock = formatListBlock('Products', products, (entry) => {
+        const category = entry.category ? `${entry.category}, ` : '';
+        const price = entry.price !== null && entry.price !== undefined ? `price ${entry.price}` : 'price on request';
+        const stock = entry.stock_quantity !== null && entry.stock_quantity !== undefined ? `, stock ${entry.stock_quantity}` : '';
+        const description = entry.description ? `, ${entry.description}` : '';
+        return `${entry.product_name || 'Product'} (${category}${price}${stock})${description}`;
+    });
+
+    const appointmentsBlock = formatListBlock('Upcoming appointments', appointments, (entry) => {
+        const time = entry.appointment_time ? ` at ${entry.appointment_time}` : '';
+        const notes = entry.notes ? `, notes: ${entry.notes}` : '';
+        return `${entry.appointment_date || 'Date TBD'}${time}, status ${entry.status || 'scheduled'}${notes}`;
+    });
+
+    const conversationBlock = recentConversation.length
+        ? `Recent conversation:\n${recentConversation.map((entry) => `${entry.direction || 'message'}: ${entry.message || ''}`).join('\n')}`
+        : 'Recent conversation: none';
 
     const response = await fetch(OPENAI_API_URL, {
         method: 'POST',
@@ -111,12 +248,23 @@ async function generateAiReply(tenantId, incomingText) {
                             type: 'input_text',
                             text: [
                                 'You are an auto-reply assistant for a small business.',
-                                'Answer using only the business knowledge provided below.',
-                                'If the knowledge does not contain the answer, say you will share the request with the team and ask one short follow-up question.',
+                                'Answer using only the business context provided below.',
+                                'Prefer exact details from the knowledge base, services, offers, products, appointments, and recent conversation.',
+                                'If the context does not contain the answer, say you will share the request with the team and ask one short follow-up question.',
                                 'Keep the reply concise, practical, and customer-friendly.',
                                 '',
                                 'Business knowledge:',
-                                knowledgeBlock
+                                knowledgeBlock || 'Knowledge base: none',
+                                '',
+                                servicesBlock,
+                                '',
+                                offersBlock,
+                                '',
+                                productsBlock,
+                                '',
+                                appointmentsBlock,
+                                '',
+                                conversationBlock
                             ].join('\n')
                         }
                     ]
@@ -158,7 +306,7 @@ async function enqueueAutoReplyJob({
     const delaySeconds = Math.max(0, Number(settings.delay_seconds || 0));
     const runAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
 
-    const replyText = settings.ai_enabled ? await generateAiReply(tenantId, incomingMessage) : null;
+    const replyText = settings.ai_enabled ? await generateAiReply(tenantId, incomingMessage, senderId) : null;
     if (!replyText) return { enqueued: false, reason: 'no_reply' };
 
     const { error } = await supabase.from('auto_reply_jobs').upsert(

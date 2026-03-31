@@ -126,6 +126,24 @@ create table if not exists offers (
 create index offers_tenant_idx on offers(tenant_id);
 
 -------------------------------------------------------
+-- PRODUCTS
+-------------------------------------------------------
+
+create table if not exists products (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id) on delete cascade,
+ product_name text not null,
+ category text,
+ description text,
+ price numeric,
+ stock_quantity int default 0,
+ is_active boolean default true,
+ created_at timestamptz default now()
+);
+
+create index if not exists products_tenant_idx on products(tenant_id);
+
+-------------------------------------------------------
 -- MENU OPTIONS (Dashboard Configurable)
 -------------------------------------------------------
 

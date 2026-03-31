@@ -1,6 +1,7 @@
 
 const express = require('express');
 const router = express.Router();
+const XLSX = require('xlsx');
 
 const supabase = require('../config/supabase');
 const { verifyToken } = require('../middleware/auth');
@@ -107,6 +108,80 @@ function sanitizeSearch(value) {
     return String(value || '')
         .replace(/[^a-zA-Z0-9@._+\-\s]/g, ' ')
         .trim();
+}
+
+function normalizeImportHeader(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function readWorksheetRows({ fileName, base64, text }) {
+    const lowerName = String(fileName || '').toLowerCase();
+
+    if (text) {
+        const workbook = XLSX.read(text, { type: 'string' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        return XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+    }
+
+    if (!base64) {
+        throw new Error('Missing import file content');
+    }
+
+    const buffer = Buffer.from(base64, 'base64');
+    const workbook = lowerName.endsWith('.csv')
+        ? XLSX.read(buffer.toString('utf8'), { type: 'string' })
+        : XLSX.read(buffer, { type: 'buffer' });
+
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    return XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+}
+
+function parseTextProducts(text) {
+    return String(text || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+            const parts = line.split('|').map((item) => item.trim());
+            return {
+                product_name: parts[0] || '',
+                category: parts[1] || '',
+                price: parts[2] || '',
+                stock_quantity: parts[3] || '',
+                description: parts.slice(4).join(' | ')
+            };
+        })
+        .filter((row) => row.product_name);
+}
+
+function mapImportedProduct(row) {
+    const normalized = {};
+    Object.entries(row || {}).forEach(([key, value]) => {
+        normalized[normalizeImportHeader(key)] = value;
+    });
+
+    const productName = String(
+        normalized.product_name
+        || normalized.product
+        || normalized.name
+        || normalized.item_name
+        || ''
+    ).trim();
+
+    if (!productName) return null;
+
+    return {
+        product_name: productName,
+        category: String(normalized.category || normalized.type || '').trim() || null,
+        description: String(normalized.description || normalized.details || '').trim() || null,
+        price: toNullableNumber(normalized.price ?? normalized.amount ?? normalized.rate),
+        stock_quantity: toNumber(normalized.stock_quantity ?? normalized.stock ?? normalized.qty ?? normalized.quantity, 0),
+        is_active: toBoolean(normalized.is_active ?? normalized.active ?? true, true)
+    };
 }
 
 function mapRuleRow(row) {
@@ -705,6 +780,162 @@ router.delete('/menu-options/:id', async (req, res) => {
         return safeJsonError(res, error, 'Failed to delete menu option');
     }
 });
+
+router.get('/products', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('products')
+            .select('id,product_name,category,description,price,stock_quantity,is_active,created_at')
+            .eq('tenant_id', req.tenantId)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            if (isMissingTableError(error)) return res.json([]);
+            throw error;
+        }
+
+        return res.json(data || []);
+    } catch (error) {
+        return safeJsonError(res, error, 'Failed to load products');
+    }
+});
+
+router.post('/products', async (req, res) => {
+    try {
+        const productName = String(req.body.product_name || req.body.productName || '').trim();
+        const category = String(req.body.category || '').trim();
+        const description = String(req.body.description || '').trim();
+
+        if (!productName) {
+            return res.status(400).json({ error: 'Product name is required' });
+        }
+
+        const { data, error } = await supabase
+            .from('products')
+            .insert({
+                tenant_id: req.tenantId,
+                product_name: productName,
+                category: category || null,
+                description: description || null,
+                price: toNullableNumber(req.body.price),
+                stock_quantity: toNumber(req.body.stock_quantity ?? req.body.stockQuantity, 0),
+                is_active: toBoolean(req.body.is_active ?? req.body.isActive, true)
+            })
+            .select('id,product_name,category,description,price,stock_quantity,is_active,created_at')
+            .single();
+
+        if (error) throw error;
+
+        return res.status(201).json(data);
+    } catch (error) {
+        if (isMissingTableError(error)) {
+            return res.status(503).json({ error: 'products table is missing. Run schema migration.' });
+        }
+        return safeJsonError(res, error, 'Failed to create product');
+    }
+});
+
+router.post('/products/import', async (req, res) => {
+    try {
+        const fileName = String(req.body.fileName || 'products.txt').trim();
+        const rawRows = req.body.text
+            ? parseTextProducts(req.body.text)
+            : readWorksheetRows({
+                fileName,
+                base64: req.body.base64
+            });
+
+        const rows = rawRows
+            .map(mapImportedProduct)
+            .filter(Boolean)
+            .map((row) => ({
+                tenant_id: req.tenantId,
+                ...row
+            }));
+
+        if (!rows.length) {
+            return res.status(400).json({ error: 'No valid product rows found in the uploaded data' });
+        }
+
+        const { data, error } = await supabase
+            .from('products')
+            .insert(rows)
+            .select('id');
+
+        if (error) throw error;
+
+        return res.json({
+            success: true,
+            imported: (data || []).length
+        });
+    } catch (error) {
+        if (isMissingTableError(error)) {
+            return res.status(503).json({ error: 'products table is missing. Run schema migration.' });
+        }
+        return safeJsonError(res, error, 'Failed to import products');
+    }
+});
+
+router.put('/products/:id', async (req, res) => {
+    try {
+        const payload = {};
+
+        if (req.body.product_name !== undefined || req.body.productName !== undefined) {
+            payload.product_name = String(req.body.product_name || req.body.productName || '').trim();
+        }
+        if (req.body.category !== undefined) payload.category = String(req.body.category || '').trim() || null;
+        if (req.body.description !== undefined) payload.description = String(req.body.description || '').trim() || null;
+        if (req.body.price !== undefined) payload.price = toNullableNumber(req.body.price);
+        if (req.body.stock_quantity !== undefined || req.body.stockQuantity !== undefined) {
+            payload.stock_quantity = toNumber(req.body.stock_quantity ?? req.body.stockQuantity, 0);
+        }
+        if (req.body.is_active !== undefined || req.body.isActive !== undefined) {
+            payload.is_active = toBoolean(req.body.is_active ?? req.body.isActive, true);
+        }
+
+        if (Object.keys(payload).length === 0) {
+            return res.status(400).json({ error: 'No fields provided for update' });
+        }
+
+        const { data, error } = await supabase
+            .from('products')
+            .update(payload)
+            .eq('id', req.params.id)
+            .eq('tenant_id', req.tenantId)
+            .select('id,product_name,category,description,price,stock_quantity,is_active,created_at')
+            .maybeSingle();
+
+        if (error) throw error;
+        if (!data) return res.status(404).json({ error: 'Product not found' });
+
+        return res.json(data);
+    } catch (error) {
+        if (isMissingTableError(error)) {
+            return res.status(503).json({ error: 'products table is missing. Run schema migration.' });
+        }
+        return safeJsonError(res, error, 'Failed to update product');
+    }
+});
+
+router.delete('/products/:id', async (req, res) => {
+    try {
+        const { error } = await supabase
+            .from('products')
+            .delete()
+            .eq('id', req.params.id)
+            .eq('tenant_id', req.tenantId);
+
+        if (error) throw error;
+
+        return res.json({ success: true });
+    } catch (error) {
+        if (isMissingTableError(error)) {
+            return res.status(503).json({ error: 'products table is missing. Run schema migration.' });
+        }
+        return safeJsonError(res, error, 'Failed to delete product');
+    }
+});
+
 router.get('/appointments', async (req, res) => {
     try {
         const { status, fromDate, toDate } = req.query;

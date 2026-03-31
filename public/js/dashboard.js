@@ -16,6 +16,7 @@ const moduleTitles = {
     conversations: 'Conversations',
     services: 'Services Management',
     offers: 'Offers Management',
+    products: 'Products',
     appointments: 'Appointments',
     leads: 'Leads',
     posts: 'Posts',
@@ -346,6 +347,7 @@ async function switchModule(moduleName) {
         conversations: renderConversationsModule,
         services: renderServicesModule,
         offers: renderOffersModule,
+        products: renderProductsModule,
         appointments: renderAppointmentsModule,
         leads: renderLeadsModule,
         posts: renderPostsModule,
@@ -642,7 +644,8 @@ async function renderCrudModule(config) {
         fields,
         columns,
         mapRow = (item) => item,
-        onRenderFooter = () => ''
+        onRenderFooter = () => '',
+        onReady = null
     } = config;
 
     const formInputs = fields.map((field) => {
@@ -810,6 +813,14 @@ async function renderCrudModule(config) {
 
     resetForm();
     await loadRecords();
+
+    if (typeof onReady === 'function') {
+        await onReady({
+            loadRecords,
+            resetForm,
+            writePayload
+        });
+    }
 }
 
 async function renderServicesModule() {
@@ -1552,6 +1563,133 @@ async function renderKnowledgeBaseModule() {
             await renderKnowledgeBaseModule();
         } catch (error) {
             notifyError(error);
+        }
+    });
+}
+
+async function renderProductsModule() {
+    await renderCrudModule({
+        title: 'Products',
+        endpoint: '/api/products',
+        fields: [
+            { id: 'productName', key: 'product_name', label: 'Product Name' },
+            { id: 'productCategory', key: 'category', label: 'Category' },
+            { id: 'productPrice', key: 'price', label: 'Price', type: 'number' },
+            { id: 'productStock', key: 'stock_quantity', label: 'Stock Qty', type: 'number' },
+            { id: 'productDescription', key: 'description', label: 'Description', type: 'textarea', wide: true },
+            {
+                id: 'productActive',
+                key: 'is_active',
+                label: 'Status',
+                type: 'select',
+                coerce: 'boolean',
+                options: [
+                    { value: true, label: 'Active' },
+                    { value: false, label: 'Inactive' }
+                ],
+                defaultValue: true
+            }
+        ],
+        columns: [
+            { key: 'product_name', label: 'Product' },
+            { key: 'category', label: 'Category' },
+            { key: 'price', label: 'Price' },
+            { key: 'stock_quantity', label: 'Stock Qty' },
+            { key: 'is_active', label: 'Status', render: (row) => row.is_active ? 'Active' : 'Inactive' }
+        ],
+        onRenderFooter: () => `
+            <section class="import-panel">
+                <h3>Import Product Data</h3>
+                <p class="muted">Upload Excel, CSV, or text data and keep editing products after import.</p>
+                <div class="form-grid">
+                    <input id="productImportFile" type="file" accept=".xlsx,.xls,.csv,.txt" class="wide">
+                    <textarea id="productImportText" class="wide" placeholder="Or paste plain text here. Example: Product Name, Category, Price, Stock Qty, Description"></textarea>
+                </div>
+                <div class="actions">
+                    <button class="btn" id="importProductsBtn" type="button">Import Products</button>
+                    <button class="btn btn-secondary" id="clearProductImportBtn" type="button">Clear Import</button>
+                </div>
+                <div id="productImportStatus" class="muted"></div>
+            </section>
+        `,
+        onReady: async ({ loadRecords }) => {
+            const fileInput = document.getElementById('productImportFile');
+            const textInput = document.getElementById('productImportText');
+            const status = document.getElementById('productImportStatus');
+            const clearBtn = document.getElementById('clearProductImportBtn');
+            const importBtn = document.getElementById('importProductsBtn');
+
+            function setStatus(message, type = 'muted') {
+                if (!status) return;
+                status.className = type === 'error' ? 'form-feedback error' : 'muted';
+                status.textContent = message;
+            }
+
+            async function readSelectedFile(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onerror = () => reject(new Error('Failed to read the selected file.'));
+                    reader.onload = () => {
+                        const result = reader.result;
+                        if (typeof result === 'string') {
+                            const base64 = result.includes(',') ? result.split(',')[1] : result;
+                            resolve(base64);
+                            return;
+                        }
+                        reject(new Error('Unsupported file format.'));
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    if (fileInput) fileInput.value = '';
+                    if (textInput) textInput.value = '';
+                    setStatus('');
+                });
+            }
+
+            if (importBtn) {
+                importBtn.addEventListener('click', async () => {
+                    const file = fileInput?.files?.[0] || null;
+                    const pastedText = String(textInput?.value || '').trim();
+
+                    if (!file && !pastedText) {
+                        setStatus('Choose a file or paste product text first.', 'error');
+                        return;
+                    }
+
+                    try {
+                        importBtn.disabled = true;
+                        setStatus('Importing products...');
+
+                        const payload = file
+                            ? {
+                                fileName: file.name,
+                                base64: await readSelectedFile(file)
+                            }
+                            : {
+                                fileName: 'products.txt',
+                                text: pastedText
+                            };
+
+                        const result = await authedRequest('/api/products/import', {
+                            method: 'POST',
+                            body: payload
+                        });
+
+                        setStatus(`Imported ${result.imported || 0} products successfully.`);
+                        if (fileInput) fileInput.value = '';
+                        if (textInput) textInput.value = '';
+                        await loadRecords();
+                    } catch (error) {
+                        setStatus(error.message || 'Import failed.', 'error');
+                    } finally {
+                        importBtn.disabled = false;
+                    }
+                });
+            }
         }
     });
 }
