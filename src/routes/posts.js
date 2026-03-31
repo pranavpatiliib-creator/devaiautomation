@@ -7,6 +7,11 @@ const { requireTenant } = require('../middleware/tenant');
 const rateLimiter = require('../middleware/rateLimiter');
 const { asTrimmedString, asNullableIsoDate, asInt, requireFields } = require('../utils/validation');
 const logger = require('../utils/appLogger');
+const { generateFlyerAndSave } = require('../services/flyerService');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs/promises');
+const crypto = require('crypto');
 
 router.use(verifyToken, requireTenant);
 // This route file defines endpoints for managing social media posts, including creating, updating, deleting, and scheduling posts. It also includes an endpoint for retrieving post attempts. The routes validate input data, handle database interactions with Supabase, and implement error handling for various scenarios, such as missing fields or database errors. The endpoints are protected with authentication and tenant resolution middleware to ensure that only authorized users can access and modify their own posts.
@@ -24,6 +29,72 @@ function normalizeStatus(value) {
 // Marks a post as successfully posted, updating its status to 'posted' and clearing any retry information.
 const ALLOWED_PLATFORMS = new Set(['facebook', 'instagram', 'whatsapp', 'linkedin', 'twitter', 'x', 'generic']);
 const ALLOWED_STATUSES = new Set(['draft', 'scheduled', 'posted', 'failed', 'retrying', 'canceled']);
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 6 * 1024 * 1024 } // 6MB
+});
+
+function resolveUploadId() {
+    if (typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return crypto.randomBytes(16).toString('hex');
+}
+
+function resolveImageExtension(mime) {
+    const normalized = String(mime || '').toLowerCase();
+    if (normalized === 'image/png') return 'png';
+    if (normalized === 'image/jpeg' || normalized === 'image/jpg') return 'jpg';
+    if (normalized === 'image/webp') return 'webp';
+    return null;
+}
+
+router.post('/posts/media', rateLimiter, upload.single('file'), async (req, res) => {
+    try {
+        const file = req.file;
+        if (!file) return res.status(400).json({ error: 'Missing file' });
+
+        const ext = resolveImageExtension(file.mimetype);
+        if (!ext) return res.status(400).json({ error: 'Only PNG, JPG, or WEBP images are allowed' });
+
+        const tenantId = String(req.tenantId);
+        const id = resolveUploadId();
+        const relDir = path.join('uploads', 'posts', tenantId);
+        const absDir = path.join(process.cwd(), 'public', relDir);
+        await fs.mkdir(absDir, { recursive: true });
+
+        const filename = `${id}.${ext}`;
+        const relPath = path.join(relDir, filename).replace(/\\/g, '/');
+        const absPath = path.join(process.cwd(), 'public', relPath);
+        await fs.writeFile(absPath, file.buffer);
+
+        return res.json({ success: true, url: `/${relPath}` });
+    } catch (error) {
+        console.error('Upload post media error:', error);
+        return res.status(500).json({ error: 'Failed to upload image' });
+    }
+});
+
+router.post('/posts/flyer', rateLimiter, async (req, res) => {
+    try {
+        const flyer = {
+            headline: asTrimmedString(req.body.headline, 120),
+            subheadline: asTrimmedString(req.body.subheadline, 180),
+            offer: asTrimmedString(req.body.offer, 400),
+            cta: asTrimmedString(req.body.cta, 120),
+            theme: asTrimmedString(req.body.theme, 80),
+            notes: asTrimmedString(req.body.notes, 600)
+        };
+
+        const result = await generateFlyerAndSave({ tenant: req.tenant, flyer });
+        return res.json({ success: true, flyer: result });
+    } catch (error) {
+        const status = Number(error?.status) || 500;
+        console.error('Generate flyer error:', error);
+        return res.status(status >= 400 && status < 600 ? status : 500).json({ error: error?.message || 'Failed to generate flyer' });
+    }
+});
 // Computes an exponential backoff delay in seconds based on the number of attempts, with a base delay and a maximum cap to prevent excessively long delays.
 router.get('/posts', async (req, res) => {
     try {
@@ -266,4 +337,3 @@ router.get('/posts/:id/attempts', async (req, res) => {
 });
 
 module.exports = router;
-

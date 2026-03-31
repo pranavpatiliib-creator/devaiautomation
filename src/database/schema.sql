@@ -1,7 +1,6 @@
 -- =====================================================
--- LeadFlow AI Production Schema
--- Multi-Tenant AI Receptionist SaaS
--- =====================================================
+-- Let's create a comprehensive database schema for our SaaS platform that includes all the necessary tables and relationships to support the features we've discussed.
+--=====================================================
 
 create extension if not exists "uuid-ossp";
 
@@ -39,7 +38,7 @@ create table if not exists tenants (
 
 create index if not exists tenants_user_idx on tenants(user_id);
 
--------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------
 -- CHANNEL CONNECTIONS
 -------------------------------------------------------
 
@@ -338,9 +337,9 @@ create table if not exists social_post_attempts (
 
 create index if not exists social_post_attempts_post_idx on social_post_attempts(post_id);
 
--------------------------------------------------------
--- AUTO REPLY SETTINGS + JOBS
--------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------
+-- AUTO REPLY SETTINGS + JOBS ---------------
+----------------------------------------------------------------------------------------------------------
 
 create table if not exists auto_reply_settings (
  id uuid primary key default uuid_generate_v4(),
@@ -377,9 +376,9 @@ create index if not exists auto_reply_jobs_tenant_idx on auto_reply_jobs(tenant_
 create index if not exists auto_reply_jobs_run_idx on auto_reply_jobs(run_at);
 create index if not exists auto_reply_jobs_status_idx on auto_reply_jobs(status);
 
--------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------
 -- PRIVILEGES
--------------------------------------------------------
+------------------------------------------------------------------------------------------------------
 
 grant usage on schema public to anon, authenticated, service_role;
 grant all privileges on all tables in schema public to anon, authenticated, service_role;

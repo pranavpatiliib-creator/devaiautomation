@@ -147,6 +147,22 @@ app.use((req, res) => {
 
 // ================= ERROR HANDLER =================
 app.use((err, req, res, next) => {
+    if (err?.type === 'request.aborted' || err?.code === 'ECONNABORTED') {
+        const sizeInfo = err?.expected ? ` (${err.received || 0}/${err.expected} bytes received)` : '';
+        console.warn(`Request aborted by client: ${req.method} ${req.originalUrl}${sizeInfo}`);
+        if (!res.headersSent) {
+            return res.status(499).json({ error: 'Request aborted by client' });
+        }
+        return;
+    }
+
+    if (err?.type === 'entity.too.large' || err?.status === 413) {
+        if (!res.headersSent) {
+            return res.status(413).json({ error: 'Request payload too large' });
+        }
+        return;
+    }
+
     console.error('Server error:', err);
     res.status(500).json({ error: 'Internal server error' });
 });

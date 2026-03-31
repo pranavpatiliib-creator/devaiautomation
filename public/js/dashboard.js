@@ -445,6 +445,8 @@ async function loadProfileHeader() {
         const profile = await authedRequest('/api/settings/profile');
         const businessName = profile?.tenant?.business_name || localStorage.getItem('businessName') || 'LeadFlow AI';
         const name = profile?.user?.name || localStorage.getItem('name') || 'User';
+        state.settingsLogoDataUrl = profile?.tenant?.business_logo || '';
+        renderSidebarLogoBadge();
 
         const businessEl = document.getElementById('businessTitle');
         const userEl = document.getElementById('userName');
@@ -1283,14 +1285,34 @@ async function renderPostsModule() {
                     <option value="instagram">Instagram</option>
                 </select>
                 <input id="postScheduleAt" type="datetime-local">
-                <input id="postMediaUrl" class="wide" placeholder="Public image URL (required for Instagram publishing)">
+                <input id="postMediaUrl" class="wide" placeholder="Image URL (auto-filled after upload)">
+                <input id="postMediaFile" type="file" accept="image/png,image/jpeg,image/webp" class="wide">
                 <textarea id="postContent" class="wide" placeholder="Write your post caption or message"></textarea>
             </div>
             <div class="actions">
+                <button class="btn btn-secondary" id="uploadPostMediaBtn" type="button">Upload Image</button>
                 <button class="btn" id="savePostBtn" type="button">Save Draft / Schedule</button>
                 <button class="btn btn-secondary" id="publishPostBtn" type="button">Publish Now</button>
                 <button class="btn btn-secondary" id="resetPostBtn" type="button">Reset</button>
             </div>
+        </section>
+        <section class="card stack">
+            <h3>Automatic Flyer</h3>
+            <p class="muted">Generate a ready-to-post flyer image and caption using your OpenAI API key on the server.</p>
+            <div class="form-grid">
+                <input id="flyerHeadline" placeholder="Headline (e.g., Summer Offer)">
+                <input id="flyerTheme" placeholder="Theme (e.g., minimal, premium, bright)">
+                <input id="flyerSubheadline" class="wide" placeholder="Subheadline (optional)">
+                <input id="flyerOffer" class="wide" placeholder="Offer / details (optional)">
+                <input id="flyerCta" class="wide" placeholder="Call-to-action (optional)">
+                <textarea id="flyerNotes" class="wide" placeholder="Extra notes (optional)"></textarea>
+            </div>
+            <div class="actions">
+                <button class="btn" id="generateFlyerBtn" type="button">Generate Flyer</button>
+                <button class="btn btn-secondary" id="useFlyerBtn" type="button" disabled>Use Flyer in Post</button>
+                <a class="btn btn-secondary" id="downloadFlyerBtn" href="#" download="flyer.png" style="display:none">Download PNG</a>
+            </div>
+            <div id="flyerPreview" class="empty-state">No flyer generated yet.</div>
         </section>
         <section class="card stack">
             <div class="toolbar">
@@ -1326,12 +1348,17 @@ async function renderPostsModule() {
 
     const table = document.getElementById('postsTable');
     const attemptsPanel = document.getElementById('postAttemptsPanel');
+    const flyerPreview = document.getElementById('flyerPreview');
+    const useFlyerBtn = document.getElementById('useFlyerBtn');
+    const downloadFlyerBtn = document.getElementById('downloadFlyerBtn');
+    let latestFlyer = null;
 
     function resetPostForm() {
         document.getElementById('postId').value = '';
         document.getElementById('postPlatform').value = 'facebook';
         document.getElementById('postScheduleAt').value = '';
         document.getElementById('postMediaUrl').value = '';
+        document.getElementById('postMediaFile').value = '';
         document.getElementById('postContent').value = '';
     }
 
@@ -1346,6 +1373,39 @@ async function renderPostsModule() {
             scheduled_at: scheduleAt ? new Date(scheduleAt).toISOString() : null,
             media_urls: mediaUrl ? [mediaUrl] : []
         };
+    }
+
+    function collectFlyerPayload() {
+        return {
+            headline: document.getElementById('flyerHeadline').value.trim(),
+            theme: document.getElementById('flyerTheme').value.trim(),
+            subheadline: document.getElementById('flyerSubheadline').value.trim(),
+            offer: document.getElementById('flyerOffer').value.trim(),
+            cta: document.getElementById('flyerCta').value.trim(),
+            notes: document.getElementById('flyerNotes').value.trim()
+        };
+    }
+
+    function setFlyerState(flyer) {
+        latestFlyer = flyer;
+        if (!flyer?.image_url) {
+            flyerPreview.innerHTML = 'No flyer generated yet.';
+            useFlyerBtn.disabled = true;
+            downloadFlyerBtn.style.display = 'none';
+            downloadFlyerBtn.href = '#';
+            return;
+        }
+
+        const imageSrc = `${flyer.image_url}?v=${Date.now()}`;
+        flyerPreview.innerHTML = `
+            <div class="stack">
+                <img src="${escapeHtml(imageSrc)}" alt="Generated flyer" style="max-width: 360px; width: 100%; border-radius: 12px;">
+                ${flyer.caption ? `<pre style="white-space: pre-wrap; margin: 0;" class="muted">${escapeHtml(flyer.caption)}</pre>` : ''}
+            </div>
+        `;
+        useFlyerBtn.disabled = false;
+        downloadFlyerBtn.style.display = 'inline-flex';
+        downloadFlyerBtn.href = flyer.image_url;
     }
 
     async function loadAttempts(postId) {
@@ -1463,9 +1523,69 @@ async function renderPostsModule() {
         }
     });
 
+    document.getElementById('uploadPostMediaBtn').addEventListener('click', async () => {
+        const fileInput = document.getElementById('postMediaFile');
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) {
+            notifyError(new Error('Please choose an image file first.'));
+            return;
+        }
+
+        try {
+            const form = new FormData();
+            form.append('file', file);
+
+            const response = await fetch(`${window.location.origin}/api/posts/media`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${state.token}`
+                },
+                body: form
+            });
+
+            const contentType = response.headers.get('content-type') || '';
+            const payload = contentType.includes('application/json') ? await response.json() : { error: await response.text() };
+            if (!response.ok) {
+                throw new Error(payload?.error || `Upload failed (${response.status})`);
+            }
+
+            const absoluteUrl = `${window.location.origin}${payload.url}`;
+            document.getElementById('postMediaUrl').value = absoluteUrl;
+            notifySuccess('Image uploaded.');
+        } catch (error) {
+            notifyError(error);
+        }
+    });
+
     document.getElementById('resetPostBtn').addEventListener('click', resetPostForm);
     document.getElementById('refreshPostsBtn').addEventListener('click', loadPosts);
     document.getElementById('postStatusFilter').addEventListener('change', loadPosts);
+
+    document.getElementById('generateFlyerBtn').addEventListener('click', async () => {
+        try {
+            useFlyerBtn.disabled = true;
+            flyerPreview.innerHTML = '<div class="empty-state">Generating flyer…</div>';
+            downloadFlyerBtn.style.display = 'none';
+            const payload = collectFlyerPayload();
+            const result = await authedRequest('/api/posts/flyer', { method: 'POST', body: payload });
+            setFlyerState(result.flyer);
+            notifySuccess('Flyer generated.');
+        } catch (error) {
+            setFlyerState(null);
+            notifyError(error);
+        }
+    });
+
+    useFlyerBtn.addEventListener('click', () => {
+        if (!latestFlyer?.image_url) return;
+        const absoluteUrl = `${window.location.origin}${latestFlyer.image_url}`;
+        document.getElementById('postMediaUrl').value = absoluteUrl;
+        if (latestFlyer.caption) {
+            const current = document.getElementById('postContent').value.trim();
+            document.getElementById('postContent').value = current ? `${current}\n\n${latestFlyer.caption}` : latestFlyer.caption;
+        }
+        notifySuccess('Flyer added to the post form.');
+    });
 
     table.addEventListener('click', async (event) => {
         const publishButton = event.target.closest('[data-post-publish]');
@@ -1503,6 +1623,7 @@ async function renderPostsModule() {
     });
 
     resetPostForm();
+    setFlyerState(null);
     await loadPosts();
 }
 async function openAutoReplySetupPrompt() {
@@ -2729,6 +2850,7 @@ async function initDashboard() {
 
     bindGlobalEvents();
     await loadProfileHeader();
+    await loadLogoState();
     await switchModule(state.activeModule);
     await openAutoReplySetupPrompt();
 }
