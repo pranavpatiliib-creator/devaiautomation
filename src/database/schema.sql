@@ -22,11 +22,9 @@ create table if not exists users (
  location text,
  created_at timestamptz default now()
 );
-
 -------------------------------------------------------
 -- TENANTS
 -------------------------------------------------------
-
 create table if not exists tenants (
  id uuid primary key default uuid_generate_v4(),
  user_id uuid references users(id) on delete cascade,
@@ -35,10 +33,11 @@ create table if not exists tenants (
  whatsapp_number text,
  fb_page_id text,
  instagram_id text,
+ business_logo text,
  created_at timestamptz default now()
 );
 
-create index tenants_user_idx on tenants(user_id);
+create index if not exists tenants_user_idx on tenants(user_id);
 
 -------------------------------------------------------
 -- CHANNEL CONNECTIONS
@@ -71,10 +70,10 @@ create table if not exists customers (
  unique(tenant_id,channel,sender_id)
 );
 
-create index customers_tenant_idx on customers(tenant_id);
+create index if not exists customers_tenant_idx on customers(tenant_id);
 
 -------------------------------------------------------
--- CONVERS`ATIONS
+-- CONVERSATIONS
 
 create table if not exists conversations (
  id uuid primary key default uuid_generate_v4(),
@@ -90,7 +89,7 @@ create table if not exists conversations (
  created_at timestamptz default now()
 );
 
-create index conversations_customer_idx on conversations(customer_id);
+create index if not exists conversations_customer_idx on conversations(customer_id);
 
 -------------------------------------------------------
 -- SERVICES
@@ -106,7 +105,7 @@ create table if not exists services (
  created_at timestamptz default now()
 );
 
-create index services_tenant_idx on services(tenant_id);
+create index if not exists services_tenant_idx on services(tenant_id);
 
 -------------------------------------------------------
 -- OFFERS
@@ -123,7 +122,7 @@ create table if not exists offers (
  created_at timestamptz default now()
 );
 
-create index offers_tenant_idx on offers(tenant_id);
+create index if not exists offers_tenant_idx on offers(tenant_id);
 
 -------------------------------------------------------
 -- PRODUCTS
@@ -144,6 +143,34 @@ create table if not exists products (
 create index if not exists products_tenant_idx on products(tenant_id);
 
 -------------------------------------------------------
+-- BILLS
+-------------------------------------------------------
+
+create table if not exists bills (
+ id uuid primary key default uuid_generate_v4(),
+ tenant_id uuid references tenants(id) on delete cascade,
+ invoice_number int not null,
+ customer_name text,
+ mobile_number text,
+ bill_datetime timestamptz default now(),
+ items jsonb not null default '[]'::jsonb,
+ subtotal numeric default 0,
+ gst_percent numeric default 0,
+ gst_amount numeric default 0,
+ discount_percent numeric default 0,
+ discount_amount numeric default 0,
+ grand_total numeric default 0,
+ receipt_width_mm numeric default 80,
+ created_at timestamptz default now(),
+ unique (tenant_id, invoice_number)
+);
+
+create index if not exists bills_tenant_idx on bills(tenant_id);
+alter table bills add column if not exists gst_percent numeric default 0;
+alter table bills add column if not exists discount_percent numeric default 0;
+alter table bills add column if not exists receipt_width_mm numeric default 80;
+
+-------------------------------------------------------
 -- MENU OPTIONS (Dashboard Configurable)
 -------------------------------------------------------
 
@@ -156,8 +183,7 @@ create table if not exists menu_options (
  position int default 1,
  created_at timestamptz default now()
 );
-
-create index menu_tenant_idx on menu_options(tenant_id);
+create index if not exists menu_tenant_idx on menu_options(tenant_id);
 
 -------------------------------------------------------
 -- LEADS
@@ -194,7 +220,7 @@ create table if not exists appointments (
  created_at timestamptz default now()
 );
 
-create index appointments_tenant_idx on appointments(tenant_id);
+create index if not exists appointments_tenant_idx on appointments(tenant_id);
 
 -------------------------------------------------------
 -- AUTOMATION RULES
@@ -350,3 +376,21 @@ create table if not exists auto_reply_jobs (
 create index if not exists auto_reply_jobs_tenant_idx on auto_reply_jobs(tenant_id);
 create index if not exists auto_reply_jobs_run_idx on auto_reply_jobs(run_at);
 create index if not exists auto_reply_jobs_status_idx on auto_reply_jobs(status);
+
+-------------------------------------------------------
+-- PRIVILEGES
+-------------------------------------------------------
+
+grant usage on schema public to anon, authenticated, service_role;
+grant all privileges on all tables in schema public to anon, authenticated, service_role;
+grant all privileges on all sequences in schema public to anon, authenticated, service_role;
+grant all privileges on all functions in schema public to anon, authenticated, service_role;
+
+alter default privileges in schema public
+grant all privileges on tables to anon, authenticated, service_role;
+
+alter default privileges in schema public
+grant all privileges on sequences to anon, authenticated, service_role;
+
+alter default privileges in schema public
+grant all privileges on functions to anon, authenticated, service_role;

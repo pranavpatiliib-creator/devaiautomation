@@ -18,6 +18,7 @@ const moduleTitles = {
     services: 'Services Management',
     offers: 'Offers Management',
     products: 'Products',
+    billing: 'Create Bill',
     appointments: 'Appointments',
     leads: 'Leads',
     posts: 'Posts',
@@ -167,6 +168,27 @@ function formatDate(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '-';
     return date.toLocaleString();
+}
+
+function formatReceiptDateTime(value) {
+    const date = new Date(value || Date.now());
+    if (Number.isNaN(date.getTime())) return '-';
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    let hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    return `${day}/${month}/${year} ${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+}
+
+function escapeAttribute(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 
 function setModuleTitle(moduleKey) {
@@ -468,6 +490,7 @@ async function switchModule(moduleName) {
         services: renderServicesModule,
         offers: renderOffersModule,
         products: renderProductsModule,
+        billing: renderBillingModule,
         appointments: renderAppointmentsModule,
         leads: renderLeadsModule,
         posts: renderPostsModule,
@@ -1812,6 +1835,615 @@ async function renderProductsModule() {
             }
         }
     });
+}
+
+async function renderBillingModule() {
+    setRootHtml(`
+        <section class="card stack">
+            <h2>Create Bill</h2>
+            <div class="form-grid">
+                <input id="billCustomerName" placeholder="Customer Name">
+                <input id="billMobileNumber" placeholder="Mobile Number">
+                <select id="billPrintLayout">
+                    <option value="a4" selected>A4</option>
+                    <option value="a5">A5</option>
+                    <option value="80">80mm Thermal</option>
+                    <option value="58">58mm Thermal</option>
+                    <option value="custom">Custom Width</option>
+                </select>
+                <input id="billCustomWidth" type="number" placeholder="Custom width (mm)" disabled>
+            </div>
+            <div class="toolbar">
+                <input id="billDateTime" readonly>
+                <input id="billGST" type="number" placeholder="GST %" value="0" step="0.01">
+                <input id="billDiscount" type="number" placeholder="Discount %" value="0" step="0.01">
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Sr No</th>
+                            <th>Product Name</th>
+                            <th>Quantity</th>
+                            <th>Price</th>
+                            <th>Total</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="billItemsTable"></tbody>
+                </table>
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary" id="addBillRowBtn" type="button">Add Item</button>
+            </div>
+            <div class="billing-summary">
+                <span>Subtotal: <strong id="billSubtotal">0.00</strong></span>
+                <span>Grand Total: <strong id="billGrandTotal">0.00</strong></span>
+            </div>
+            <div class="actions">
+                <button class="btn" id="saveBillBtn" type="button">Save Bill</button>
+                <button class="btn btn-secondary" id="printBillBtn" type="button">Print Bill</button>
+                <button class="btn btn-secondary" id="downloadBillPdfBtn" type="button">Download PDF</button>
+            </div>
+        </section>
+        <section class="card stack">
+            <h3>Receipt Preview</h3>
+            <div class="billing-preview-shell">
+                <div id="billReceiptPreview" class="bill-receipt"></div>
+            </div>
+        </section>
+        <section class="card stack">
+            <div class="toolbar">
+                <h3 style="margin:0;">Billing History</h3>
+                <input id="billHistorySearch" placeholder="Search customer or mobile">
+                <button class="btn btn-secondary" id="billHistoryRefreshBtn" type="button">Refresh</button>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Invoice</th>
+                            <th>Customer</th>
+                            <th>Mobile</th>
+                            <th>Date</th>
+                            <th>Total</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="billHistoryTable"></tbody>
+                </table>
+            </div>
+        </section>
+    `);
+
+    const stateBilling = {
+        items: [],
+        savedBill: null,
+        activeBillId: null,
+        tenantProfile: await authedRequest('/api/settings/profile')
+    };
+
+    const itemsTable = document.getElementById('billItemsTable');
+    const historyTable = document.getElementById('billHistoryTable');
+    const preview = document.getElementById('billReceiptPreview');
+    const dateTimeInput = document.getElementById('billDateTime');
+    const gstInput = document.getElementById('billGST');
+    const discountInput = document.getElementById('billDiscount');
+    const printLayoutSelect = document.getElementById('billPrintLayout');
+    const customWidthInput = document.getElementById('billCustomWidth');
+
+    dateTimeInput.value = formatReceiptDateTime(new Date().toISOString());
+
+    function getPrintLayoutConfig() {
+        const value = printLayoutSelect.value;
+        if (value === 'a4') return { key: 'a4', widthMm: 210, contentWidthMm: 190, letterheadMaxMm: 30 };
+        if (value === 'a5') return { key: 'a5', widthMm: 148, contentWidthMm: 128, letterheadMaxMm: 24 };
+        if (value === '80') return { key: '80', widthMm: 80, contentWidthMm: 72, letterheadMaxMm: 18 };
+        if (value === '58') return { key: '58', widthMm: 58, contentWidthMm: 50, letterheadMaxMm: 16 };
+        const widthMm = Math.max(40, Number(customWidthInput.value || 80));
+        const letterheadMaxMm = widthMm >= 180 ? 30 : widthMm >= 120 ? 24 : widthMm >= 80 ? 18 : 16;
+        return { key: 'custom', widthMm, contentWidthMm: Math.max(40, widthMm - 8), letterheadMaxMm };
+    }
+
+    function getReceiptWidthMm() {
+        return getPrintLayoutConfig().widthMm;
+    }
+
+    function computeTotals() {
+        const subtotal = stateBilling.items.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.price) || 0)), 0);
+        const gstPercent = Math.max(0, Number(gstInput.value || 0));
+        const discountPercent = Math.max(0, Number(discountInput.value || 0));
+        const gst = Number((subtotal * gstPercent / 100).toFixed(2));
+        const discount = Number((subtotal * discountPercent / 100).toFixed(2));
+        const grandTotal = Math.max(0, subtotal + gst - discount);
+        document.getElementById('billSubtotal').textContent = subtotal.toFixed(2);
+        document.getElementById('billGrandTotal').textContent = grandTotal.toFixed(2);
+        return { subtotal, gstPercent, discountPercent, gst, discount, grandTotal };
+    }
+
+    function updateBillRowAmount(rowId) {
+        const item = stateBilling.items.find((row) => row.id === rowId);
+        const amountCell = itemsTable.querySelector(`[data-bill-line-total="${rowId}"]`);
+        if (!item || !amountCell) return;
+        amountCell.textContent = ((Number(item.quantity) || 0) * (Number(item.price) || 0)).toFixed(2);
+    }
+
+    function renderReceipt(billOverride = null) {
+        const current = billOverride || {
+            invoice_number: stateBilling.savedBill?.invoice_number || 'Preview',
+            customer_name: document.getElementById('billCustomerName').value.trim(),
+            mobile_number: document.getElementById('billMobileNumber').value.trim(),
+            bill_datetime: new Date().toISOString(),
+            items: stateBilling.items.map((item) => ({
+                name: item.name,
+                quantity: Number(item.quantity) || 0,
+                price: Number(item.price) || 0,
+                line_total: (Number(item.quantity) || 0) * (Number(item.price) || 0)
+            })),
+            subtotal: computeTotals().subtotal,
+            gst_percent: computeTotals().gstPercent,
+            gst_amount: computeTotals().gst,
+            discount_percent: computeTotals().discountPercent,
+            discount_amount: computeTotals().discount,
+            grand_total: computeTotals().grandTotal,
+            receipt_width_mm: getReceiptWidthMm()
+        };
+
+        const layout = getPrintLayoutConfig();
+        preview.style.setProperty('--receipt-width-mm', `${layout.widthMm}mm`);
+        preview.style.setProperty('--receipt-content-width-mm', `${layout.contentWidthMm}mm`);
+        preview.style.setProperty('--receipt-letterhead-max-mm', `${layout.letterheadMaxMm}mm`);
+        preview.innerHTML = `
+            <div class="receipt-inner">
+                <div class="receipt-invoice-top">Invoice No: ${escapeHtml(current.invoice_number)}</div>
+                <div class="receipt-header">
+                    <div class="receipt-header-logo">
+                        ${stateBilling.tenantProfile?.tenant?.business_logo ? `<img class="receipt-logo" src="${escapeAttribute(stateBilling.tenantProfile.tenant.business_logo)}" alt="Logo">` : ''}
+                    </div>
+                    <div class="receipt-header-copy">
+                        <h4>${escapeHtml(stateBilling.tenantProfile?.tenant?.business_name || 'Business')}</h4>
+                        <p>${escapeHtml(stateBilling.tenantProfile?.tenant?.industry || '')}</p>
+                        <p>${escapeHtml(stateBilling.tenantProfile?.user?.location || '')}</p>
+                        <p>${escapeHtml(stateBilling.tenantProfile?.tenant?.whatsapp_number || '')}</p>
+                        <p>${escapeHtml(formatReceiptDateTime(current.bill_datetime))}</p>
+                    </div>
+                </div>
+                <div class="receipt-rule"></div>
+                <div class="receipt-customer-block">
+                    <p>Customer: ${escapeHtml(current.customer_name || '-')}</p>
+                    ${current.mobile_number ? `<p>Mobile: ${escapeHtml(current.mobile_number)}</p>` : ''}
+                </div>
+                <div class="receipt-rule"></div>
+                <table class="receipt-items-table">
+                    <thead>
+                        <tr>
+                            <th>Sr</th>
+                            <th>Product Name</th>
+                            <th>Qty</th>
+                            <th>Price</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${(current.items || []).map((item, index) => `
+                            <tr>
+                                <td>${index + 1}</td>
+                                <td>${escapeHtml(item.name || '-')}</td>
+                                <td>${escapeHtml(item.quantity)}</td>
+                                <td>${escapeHtml(Number(item.price || 0).toFixed(2))}</td>
+                                <td>${escapeHtml(Number(item.line_total || 0).toFixed(2))}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                <div class="receipt-rule"></div>
+                <p class="receipt-row"><span>Subtotal</span><strong>${Number(current.subtotal || 0).toFixed(2)}</strong></p>
+                <p class="receipt-row"><span>GST (${Number(current.gst_percent || 0).toFixed(2)}%)</span><strong>${Number(current.gst_amount || 0).toFixed(2)}</strong></p>
+                <p class="receipt-row"><span>Discount (${Number(current.discount_percent || 0).toFixed(2)}%)</span><strong>${Number(current.discount_amount || 0).toFixed(2)}</strong></p>
+                <p class="receipt-row grand"><span>Grand Total</span><strong>${Number(current.grand_total || 0).toFixed(2)}</strong></p>
+                <div class="receipt-signature">
+                    <span>Authorized Signatory</span>
+                </div>
+            </div>
+        `;
+    }
+
+    async function fetchCatalog(query) {
+        if (!query || query.trim().length < 1) return [];
+        return authedRequest(`/api/billing/catalog${buildQuery({ q: query.trim() })}`);
+    }
+
+    async function buildSuggestions(input, rowId) {
+        const list = input.parentElement.querySelector('.billing-suggestions');
+        if (!list) return;
+        const results = await fetchCatalog(input.value);
+        if (!results.length) {
+            list.innerHTML = '';
+            list.style.display = 'none';
+            return;
+        }
+
+        list.innerHTML = results.map((item) => `
+            <button type="button" class="billing-suggestion" data-row-id="${rowId}" data-name="${escapeAttribute(item.name)}" data-price="${escapeAttribute(item.price)}">
+                <span>${escapeHtml(item.name)}</span>
+                <span>${escapeHtml(Number(item.price || 0).toFixed(2))}</span>
+            </button>
+        `).join('');
+        list.style.display = 'block';
+    }
+
+    function applySuggestion(rowId, name, price) {
+        const item = stateBilling.items.find((row) => row.id === rowId);
+        if (!item) return;
+        item.name = name;
+        item.price = Number(price || 0);
+        item.quantity = item.quantity || 1;
+        renderItems();
+    }
+
+    function renderItems() {
+        if (!stateBilling.items.length) {
+            itemsTable.innerHTML = '<tr><td colspan="5"><div class="empty-state">Add products or services to start the bill.</div></td></tr>';
+            renderReceipt();
+            return;
+        }
+
+        itemsTable.innerHTML = stateBilling.items.map((item) => `
+            <tr>
+                <td class="billing-col-serial">${stateBilling.items.findIndex((row) => row.id === item.id) + 1}</td>
+                <td class="billing-col-name">
+                    <div class="billing-autocomplete">
+                        <input data-bill-name="${item.id}" value="${escapeAttribute(item.name)}" placeholder="Type product or service">
+                        <div class="billing-suggestions"></div>
+                    </div>
+                </td>
+                <td class="billing-col-qty"><input data-bill-qty="${item.id}" type="number" min="1" step="1" inputmode="numeric" value="${escapeAttribute(item.quantity)}"></td>
+                <td class="billing-col-price"><input data-bill-price="${item.id}" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeAttribute(item.price)}"></td>
+                <td class="billing-col-total" data-bill-line-total="${item.id}">${((Number(item.quantity) || 0) * (Number(item.price) || 0)).toFixed(2)}</td>
+                <td class="billing-col-action"><button class="btn btn-danger" data-bill-remove="${item.id}" type="button">Remove</button></td>
+            </tr>
+        `).join('');
+        computeTotals();
+        renderReceipt();
+    }
+
+    function addRow(data = {}) {
+        stateBilling.items.push({
+            id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            name: data.name || '',
+            quantity: data.quantity || 1,
+            price: data.price || 0
+        });
+        renderItems();
+    }
+
+    function populateBillForm(bill) {
+        stateBilling.savedBill = bill;
+        stateBilling.activeBillId = bill.id || null;
+        document.getElementById('billCustomerName').value = bill.customer_name || '';
+        document.getElementById('billMobileNumber').value = bill.mobile_number || '';
+        dateTimeInput.value = formatReceiptDateTime(bill.bill_datetime);
+        gstInput.value = Number(bill.gst_percent || 0);
+        discountInput.value = Number(bill.discount_percent || 0);
+        const savedWidth = Number(bill.receipt_width_mm || 210);
+        if (savedWidth === 210) {
+            printLayoutSelect.value = 'a4';
+            customWidthInput.value = '';
+            customWidthInput.disabled = true;
+        } else if (savedWidth === 148) {
+            printLayoutSelect.value = 'a5';
+            customWidthInput.value = '';
+            customWidthInput.disabled = true;
+        } else if (savedWidth === 80) {
+            printLayoutSelect.value = '80';
+            customWidthInput.value = '';
+            customWidthInput.disabled = true;
+        } else if (savedWidth === 58) {
+            printLayoutSelect.value = '58';
+            customWidthInput.value = '';
+            customWidthInput.disabled = true;
+        } else {
+            printLayoutSelect.value = 'custom';
+            customWidthInput.value = savedWidth;
+            customWidthInput.disabled = false;
+        }
+        stateBilling.items = (bill.items || []).map((item) => ({
+            id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            name: item.name || '',
+            quantity: Number(item.quantity || 1),
+            price: Number(item.price || 0)
+        }));
+        renderItems();
+        renderReceipt(bill);
+    }
+
+    function resetBillForm() {
+        stateBilling.savedBill = null;
+        stateBilling.activeBillId = null;
+        document.getElementById('billCustomerName').value = '';
+        document.getElementById('billMobileNumber').value = '';
+        dateTimeInput.value = formatReceiptDateTime(new Date().toISOString());
+        gstInput.value = 0;
+        discountInput.value = 0;
+        printLayoutSelect.value = 'a4';
+        customWidthInput.value = '';
+        customWidthInput.disabled = true;
+        stateBilling.items = [];
+        addRow();
+    }
+
+    async function loadHistory() {
+        try {
+            const search = document.getElementById('billHistorySearch').value.trim();
+            const bills = await authedRequest(`/api/bills${buildQuery({ search })}`);
+            if (!bills.length) {
+                historyTable.innerHTML = '<tr><td colspan="6"><div class="empty-state">No bills found.</div></td></tr>';
+                return;
+            }
+
+            historyTable.innerHTML = bills.map((bill) => `
+                <tr>
+                    <td>#${escapeHtml(bill.invoice_number)}</td>
+                    <td>${escapeHtml(bill.customer_name || '-')}</td>
+                    <td>${escapeHtml(bill.mobile_number || '-')}</td>
+                    <td>${escapeHtml(formatReceiptDateTime(bill.bill_datetime))}</td>
+                    <td>${escapeHtml(Number(bill.grand_total || 0).toFixed(2))}</td>
+                    <td>
+                        <div class="actions">
+                            <button class="btn btn-secondary" data-bill-view="${bill.id}" type="button">View</button>
+                            <button class="btn btn-secondary" data-bill-print="${bill.id}" type="button">Reprint</button>
+                            <button class="btn btn-secondary" data-bill-pdf="${bill.id}" type="button">PDF</button>
+                            <button class="btn btn-danger" data-bill-delete="${bill.id}" type="button">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            notifyError(error);
+        }
+    }
+
+    async function saveBill() {
+        try {
+            const isEditing = Boolean(stateBilling.activeBillId);
+            const totals = computeTotals();
+            const payload = {
+                customerName: document.getElementById('billCustomerName').value.trim(),
+                mobileNumber: document.getElementById('billMobileNumber').value.trim(),
+                items: stateBilling.items.map((item) => ({
+                    name: item.name,
+                    quantity: Number(item.quantity) || 1,
+                    price: Number(item.price) || 0
+                })),
+                gstPercent: totals.gstPercent,
+                discountPercent: totals.discountPercent,
+                receiptWidthMm: getReceiptWidthMm()
+            };
+
+            const bill = await authedRequest(stateBilling.activeBillId ? `/api/bills/${stateBilling.activeBillId}` : '/api/bills', {
+                method: stateBilling.activeBillId ? 'PUT' : 'POST',
+                body: payload
+            });
+            stateBilling.savedBill = bill;
+            stateBilling.activeBillId = bill.id;
+            renderReceipt(bill);
+            notifySuccess(`Bill #${bill.invoice_number} ${isEditing ? 'updated' : 'saved'}.`);
+            await loadHistory();
+            return bill;
+        } catch (error) {
+            notifyError(error);
+            return null;
+        }
+    }
+
+    function printReceipt() {
+        const layout = getPrintLayoutConfig();
+        const pageSize = layout.key === 'a4' ? 'A4' : layout.key === 'a5' ? 'A5' : `${layout.widthMm}mm auto`;
+        const html = `
+<!doctype html>
+<html><head><title>Print Bill</title>
+<style>
+@page { size: ${pageSize}; margin: 10mm; }
+html,body{margin:0;padding:0;font-family:Arial,sans-serif;}
+body{width:${layout.widthMm}mm;}
+.receipt{width:${layout.contentWidthMm}mm;padding:0;box-sizing:border-box;margin:0 auto;}
+.receipt img{max-width:28mm;max-height:${layout.letterheadMaxMm}mm;display:block;margin:0 0 2mm;object-fit:contain;}
+.receipt h4,.receipt p{margin:0 0 1.5mm;text-align:center;font-size:11px;}
+.rule{border-top:1px dashed #666;margin:2mm 0;}
+.row{display:flex;justify-content:space-between;font-size:10px;margin:0 0 1.5mm;}
+.item-title{font-size:10px;margin:0 0 1mm;}
+</style></head><body>${preview.innerHTML.replace('receipt-inner', 'receipt').replace(/receipt-rule/g, 'rule').replace(/receipt-row/g, 'row').replace(/receipt-item-meta/g, 'row').replace(/receipt-item/g, '')}<script>window.print();</script></body></html>`;
+        const popup = window.open('', 'print_bill', 'width=420,height=760');
+        if (!popup) {
+            notifyError(new Error('Popup blocked. Please allow popups to print.'));
+            return;
+        }
+        popup.document.write(html);
+        popup.document.close();
+    }
+
+    itemsTable.addEventListener('input', async (event) => {
+        const nameInput = event.target.closest('[data-bill-name]');
+        const qtyInput = event.target.closest('[data-bill-qty]');
+        const priceInput = event.target.closest('[data-bill-price]');
+
+        if (nameInput) {
+            const item = stateBilling.items.find((row) => row.id === nameInput.dataset.billName);
+            if (!item) return;
+            item.name = nameInput.value;
+            renderReceipt();
+            await buildSuggestions(nameInput, item.id);
+            return;
+        }
+
+        if (qtyInput) {
+            const item = stateBilling.items.find((row) => row.id === qtyInput.dataset.billQty);
+            if (!item) return;
+            const parsedValue = Math.max(1, parseInt(qtyInput.value || '1', 10) || 1);
+            item.quantity = parsedValue;
+            updateBillRowAmount(item.id);
+            computeTotals();
+            renderReceipt();
+            return;
+        }
+
+        if (priceInput) {
+            const item = stateBilling.items.find((row) => row.id === priceInput.dataset.billPrice);
+            if (!item) return;
+            const parsedValue = Math.max(0, Number(priceInput.value || 0));
+            item.price = parsedValue;
+            updateBillRowAmount(item.id);
+            computeTotals();
+            renderReceipt();
+        }
+    });
+
+    itemsTable.addEventListener('click', async (event) => {
+        const removeBtn = event.target.closest('[data-bill-remove]');
+        const suggestionBtn = event.target.closest('.billing-suggestion');
+        if (removeBtn) {
+            stateBilling.items = stateBilling.items.filter((item) => item.id !== removeBtn.dataset.billRemove);
+            renderItems();
+            return;
+        }
+        if (suggestionBtn) {
+            applySuggestion(suggestionBtn.dataset.rowId, suggestionBtn.dataset.name, suggestionBtn.dataset.price);
+        }
+    });
+
+    itemsTable.addEventListener('keydown', (event) => {
+        const nameInput = event.target.closest('[data-bill-name]');
+        if (!nameInput) return;
+        const list = nameInput.parentElement.querySelector('.billing-suggestions');
+        const suggestions = Array.from(list?.querySelectorAll('.billing-suggestion') || []);
+        if (!suggestions.length) return;
+
+        let currentIndex = suggestions.findIndex((button) => button.classList.contains('active'));
+
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            currentIndex = Math.min(suggestions.length - 1, currentIndex + 1);
+            suggestions.forEach((button, index) => button.classList.toggle('active', index === currentIndex));
+            return;
+        }
+
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            currentIndex = Math.max(0, currentIndex - 1);
+            suggestions.forEach((button, index) => button.classList.toggle('active', index === currentIndex));
+            return;
+        }
+
+        if (event.key === 'Enter' && currentIndex >= 0) {
+            event.preventDefault();
+            const selected = suggestions[currentIndex];
+            applySuggestion(selected.dataset.rowId, selected.dataset.name, selected.dataset.price);
+        }
+    });
+
+    [gstInput, discountInput, printLayoutSelect, customWidthInput, document.getElementById('billCustomerName'), document.getElementById('billMobileNumber')].forEach((el) => {
+        el.addEventListener('input', () => {
+            customWidthInput.disabled = printLayoutSelect.value !== 'custom';
+            renderReceipt();
+        });
+    });
+
+    document.getElementById('addBillRowBtn').addEventListener('click', () => addRow());
+    document.getElementById('saveBillBtn').addEventListener('click', saveBill);
+    document.getElementById('printBillBtn').addEventListener('click', async () => {
+        const bill = stateBilling.savedBill || await saveBill();
+        if (bill) {
+            renderReceipt(bill);
+            printReceipt();
+        }
+    });
+    document.getElementById('downloadBillPdfBtn').addEventListener('click', async () => {
+        const bill = stateBilling.savedBill || await saveBill();
+        if (!bill) return;
+        try {
+            const blob = await API.download(`/api/bills/${bill.id}/pdf`, state.token);
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `invoice_${bill.invoice_number}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            notifyError(error);
+        }
+    });
+    document.getElementById('billHistoryRefreshBtn').addEventListener('click', loadHistory);
+    document.getElementById('billHistorySearch').addEventListener('input', () => {
+        window.clearTimeout(renderBillingModule.historyTimer);
+        renderBillingModule.historyTimer = window.setTimeout(loadHistory, 250);
+    });
+
+    historyTable.addEventListener('click', async (event) => {
+        const viewBtn = event.target.closest('[data-bill-view]');
+        const printBtn = event.target.closest('[data-bill-print]');
+        const pdfBtn = event.target.closest('[data-bill-pdf]');
+        const deleteBtn = event.target.closest('[data-bill-delete]');
+        if (viewBtn) {
+            try {
+                const bill = await authedRequest(`/api/bills/${viewBtn.dataset.billView}`);
+                populateBillForm(bill);
+            } catch (error) {
+                notifyError(error);
+            }
+            return;
+        }
+        if (printBtn) {
+            try {
+                const bill = await authedRequest(`/api/bills/${printBtn.dataset.billPrint}`);
+                populateBillForm(bill);
+                printReceipt();
+            } catch (error) {
+                notifyError(error);
+            }
+            return;
+        }
+        if (pdfBtn) {
+            try {
+                const blob = await API.download(`/api/bills/${pdfBtn.dataset.billPdf}/pdf`, state.token);
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `invoice.pdf`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(url);
+            } catch (error) {
+                notifyError(error);
+            }
+            return;
+        }
+        if (deleteBtn) {
+            const confirmed = window.confirm('Delete this bill?');
+            if (!confirmed) return;
+            try {
+                await authedRequest(`/api/bills/${deleteBtn.dataset.billDelete}`, {
+                    method: 'DELETE'
+                });
+                if (stateBilling.activeBillId === deleteBtn.dataset.billDelete) {
+                    resetBillForm();
+                }
+                notifySuccess('Bill deleted.');
+                await loadHistory();
+            } catch (error) {
+                notifyError(error);
+            }
+        }
+    });
+
+    document.getElementById('saveBillBtn').insertAdjacentHTML('afterend', '<button class="btn btn-secondary" id="newBillBtn" type="button">New Bill</button>');
+    document.getElementById('newBillBtn').addEventListener('click', resetBillForm);
+
+    addRow();
+    await loadHistory();
+    renderReceipt();
 }
 
 async function renderChannelsModule() {

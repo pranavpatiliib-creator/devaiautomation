@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const XLSX = require('xlsx');
+const PDFDocument = require('pdfkit');
 
 const supabase = require('../config/supabase');
 const { verifyToken } = require('../middleware/auth');
@@ -83,6 +84,163 @@ function buildDailySeries(rows = [], days = 14) {
         date,
         count: counts.get(date) || 0
     }));
+}
+
+function formatReceiptDateTime(value) {
+    const date = new Date(value || Date.now());
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    let hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    return `${day}/${month}/${year} ${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+}
+
+function mmToPoints(mm) {
+    return Number(mm || 80) * 2.834645669;
+}
+
+function resolveBillPageConfig(receiptWidthMm) {
+    const widthMm = Number(receiptWidthMm || 210);
+    if (widthMm === 210) {
+        return { size: 'A4', pageWidthPt: 595.28, marginX: 28, logoFit: [70, 22] };
+    }
+    if (widthMm === 148) {
+        return { size: 'A5', pageWidthPt: 419.53, marginX: 18, logoFit: [58, 18] };
+    }
+    return {
+        size: [mmToPoints(widthMm), 841.89],
+        pageWidthPt: mmToPoints(widthMm),
+        marginX: 12,
+        logoFit: widthMm <= 58 ? [42, 16] : [52, 18]
+    };
+}
+
+function normalizeBillItems(items) {
+    return (Array.isArray(items) ? items : [])
+        .map((item) => {
+            const name = String(item.name || item.product_name || item.productName || item.service_name || '').trim();
+            const quantity = Math.max(1, toNumber(item.quantity, 1));
+            const price = Math.max(0, toNullableNumber(item.price) ?? 0);
+            return {
+                name,
+                quantity,
+                price,
+                line_total: Number((quantity * price).toFixed(2))
+            };
+        })
+        .filter((item) => item.name);
+}
+
+async function getNextInvoiceNumber(tenantId) {
+    const { data, error } = await supabase
+        .from('bills')
+        .select('invoice_number')
+        .eq('tenant_id', tenantId)
+        .order('invoice_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        if (isMissingTableError(error)) return 1;
+        throw error;
+    }
+
+    return Number(data?.invoice_number || 0) + 1;
+}
+
+function renderBillPdf(doc, { tenant, bill }) {
+    const page = resolveBillPageConfig(bill.receipt_width_mm);
+    const pageWidthPt = page.pageWidthPt;
+    const marginX = page.marginX;
+    const printableWidth = pageWidthPt - (marginX * 2);
+    const logoWidth = page.logoFit[0];
+    const headerGap = pageWidthPt < 300 ? 8 : 16;
+    const copyX = marginX + logoWidth + headerGap;
+    const copyWidth = Math.max(80, printableWidth - logoWidth - headerGap);
+    let y = 18;
+
+    if (tenant.business_logo && /^data:image\/(png|jpeg);base64,/.test(tenant.business_logo)) {
+        try {
+            const base64 = tenant.business_logo.split(',')[1];
+            doc.image(Buffer.from(base64, 'base64'), marginX, y, { fit: page.logoFit, align: 'left' });
+        } catch (_) {}
+    }
+
+    doc.fontSize(10).text(`Invoice No: ${bill.invoice_number}`, pageWidthPt - 180, y, { width: 152, align: 'right' });
+
+    const metaLines = [
+        tenant.business_name || 'Business',
+        tenant.industry || '',
+        tenant.location || '',
+        tenant.whatsapp_number ? `Contact: ${tenant.whatsapp_number}` : '',
+        formatReceiptDateTime(bill.bill_datetime)
+    ].filter(Boolean);
+
+    metaLines.forEach((line, index) => {
+        doc.fontSize(index === 0 ? 16 : 9);
+        doc.text(line, copyX, y, { width: copyWidth, align: 'center' });
+        y += index === 0 ? 14 : 10;
+    });
+
+    y = Math.min(y, 84);
+    y += 6;
+    doc.moveTo(marginX, y).lineTo(pageWidthPt - marginX, y).strokeColor('#999').stroke();
+    y += 8;
+
+    doc.fontSize(10).text(`Customer: ${bill.customer_name || '-'}`, marginX, y, { width: printableWidth, align: 'left' });
+    y += 10;
+    if (bill.mobile_number) {
+        doc.text(`Mobile: ${bill.mobile_number}`, marginX, y, { width: printableWidth, align: 'left' });
+        y += 12;
+    }
+
+    const columns = {
+        sr: marginX,
+        name: marginX + 36,
+        qty: pageWidthPt - 210,
+        price: pageWidthPt - 150,
+        total: pageWidthPt - 78
+    };
+
+    doc.fontSize(10).text('Sr', columns.sr, y, { width: 20 });
+    doc.text('Product Name', columns.name, y, { width: 240 });
+    doc.text('Qty', columns.qty, y, { width: 34, align: 'center' });
+    doc.text('Price', columns.price, y, { width: 50, align: 'right' });
+    doc.text('Total', columns.total, y, { width: 50, align: 'right' });
+    y += 12;
+    doc.moveTo(marginX, y).lineTo(pageWidthPt - marginX, y).strokeColor('#c9d3e7').stroke();
+    y += 6;
+
+    (bill.items || []).forEach((item, index) => {
+        doc.fontSize(10).text(String(index + 1), columns.sr, y, { width: 20, align: 'center' });
+        doc.text(item.name, columns.name, y, { width: 240 });
+        doc.text(String(item.quantity), columns.qty, y, { width: 34, align: 'center' });
+        doc.text(item.price.toFixed(2), columns.price, y, { width: 50, align: 'right' });
+        doc.text(item.line_total.toFixed(2), columns.total, y, { width: 50, align: 'right' });
+        y += 14;
+    });
+
+    y += 4;
+    doc.moveTo(marginX, y).lineTo(pageWidthPt - marginX, y).strokeColor('#999').stroke();
+    y += 8;
+    [
+        ['Subtotal', Number(bill.subtotal || 0)],
+        [`GST (${Number(bill.gst_percent || 0).toFixed(2)}%)`, Number(bill.gst_amount || 0)],
+        [`Discount (${Number(bill.discount_percent || 0).toFixed(2)}%)`, Number(bill.discount_amount || 0)],
+        ['Grand Total', Number(bill.grand_total || 0)]
+    ].forEach(([label, amount]) => {
+        doc.fontSize(label === 'Grand Total' ? 11 : 10).text(label, marginX, y, { width: printableWidth / 2 });
+        doc.text(amount.toFixed(2), pageWidthPt / 2, y, { width: printableWidth / 2, align: 'right' });
+        y += label === 'Grand Total' ? 13 : 11;
+    });
+
+    y += 22;
+    doc.moveTo(pageWidthPt - 190, y).lineTo(pageWidthPt - 28, y).strokeColor('#666').stroke();
+    y += 6;
+    doc.fontSize(10).text('Authorized Signatory', pageWidthPt - 190, y, { width: 162, align: 'center' });
 }
 
 function safeJsonError(res, error, message) {
@@ -934,6 +1092,254 @@ router.delete('/products/:id', async (req, res) => {
             return res.status(503).json({ error: 'products table is missing. Run schema migration.' });
         }
         return safeJsonError(res, error, 'Failed to delete product');
+    }
+});
+
+router.get('/billing/catalog', async (req, res) => {
+    try {
+        const q = sanitizeSearch(req.query.q || '');
+        if (!q) return res.json([]);
+
+        const [productsRes, servicesRes] = await Promise.all([
+            supabase
+                .from('products')
+                .select('id,product_name,price,category')
+                .eq('tenant_id', req.tenantId)
+                .eq('is_active', true)
+                .ilike('product_name', `%${q}%`)
+                .limit(8),
+            supabase
+                .from('services')
+                .select('id,service_name,price')
+                .eq('tenant_id', req.tenantId)
+                .ilike('service_name', `%${q}%`)
+                .limit(8)
+        ]);
+
+        const products = (productsRes.data || []).map((item) => ({
+            id: item.id,
+            type: 'product',
+            name: item.product_name,
+            price: Number(item.price || 0),
+            category: item.category || ''
+        }));
+        const services = (servicesRes.data || []).map((item) => ({
+            id: item.id,
+            type: 'service',
+            name: item.service_name,
+            price: Number(item.price || 0),
+            category: 'service'
+        }));
+
+        return res.json([...products, ...services].slice(0, 12));
+    } catch (error) {
+        return safeJsonError(res, error, 'Failed to load billing catalog');
+    }
+});
+
+router.get('/bills', async (req, res) => {
+    try {
+        const search = sanitizeSearch(req.query.search || '');
+        let query = supabase
+            .from('bills')
+            .select('id,invoice_number,customer_name,mobile_number,bill_datetime,grand_total,receipt_width_mm,created_at')
+            .eq('tenant_id', req.tenantId)
+            .order('invoice_number', { ascending: false });
+
+        if (search) {
+            query = query.or(`customer_name.ilike.%${search}%,mobile_number.ilike.%${search}%`);
+        }
+
+        const { data, error } = await query.limit(100);
+        if (error) {
+            if (isMissingTableError(error)) return res.json([]);
+            throw error;
+        }
+
+        return res.json(data || []);
+    } catch (error) {
+        return safeJsonError(res, error, 'Failed to load bills');
+    }
+});
+
+router.post('/bills', async (req, res) => {
+    try {
+        const items = normalizeBillItems(req.body.items);
+        if (!items.length) {
+            return res.status(400).json({ error: 'At least one bill item is required' });
+        }
+
+        const subtotal = Number(items.reduce((sum, item) => sum + item.line_total, 0).toFixed(2));
+        const gstPercent = Math.max(0, toNullableNumber(req.body.gst_percent ?? req.body.gstPercent ?? req.body.gst_amount ?? req.body.gstAmount) ?? 0);
+        const discountPercent = Math.max(0, toNullableNumber(req.body.discount_percent ?? req.body.discountPercent ?? req.body.discount_amount ?? req.body.discountAmount) ?? 0);
+        const gstAmount = Number((subtotal * gstPercent / 100).toFixed(2));
+        const discountAmount = Number((subtotal * discountPercent / 100).toFixed(2));
+        const grandTotal = Number(Math.max(0, subtotal + gstAmount - discountAmount).toFixed(2));
+        const invoiceNumber = await getNextInvoiceNumber(req.tenantId);
+
+        const { data, error } = await supabase
+            .from('bills')
+            .insert({
+                tenant_id: req.tenantId,
+                invoice_number: invoiceNumber,
+                customer_name: String(req.body.customer_name || req.body.customerName || '').trim() || null,
+                mobile_number: String(req.body.mobile_number || req.body.mobileNumber || '').trim() || null,
+                bill_datetime: req.body.bill_datetime || req.body.billDateTime || new Date().toISOString(),
+                items,
+                subtotal,
+                gst_percent: gstPercent,
+                gst_amount: gstAmount,
+                discount_percent: discountPercent,
+                discount_amount: discountAmount,
+                grand_total: grandTotal,
+                receipt_width_mm: toNullableNumber(req.body.receipt_width_mm ?? req.body.receiptWidthMm) ?? 80
+            })
+            .select('*')
+            .single();
+
+        if (error) throw error;
+        return res.status(201).json(data);
+    } catch (error) {
+        if (isMissingTableError(error)) {
+            return res.status(503).json({ error: 'bills table is missing. Run schema migration.' });
+        }
+        return safeJsonError(res, error, 'Failed to create bill');
+    }
+});
+
+router.put('/bills/:id', async (req, res) => {
+    try {
+        const items = normalizeBillItems(req.body.items);
+        if (!items.length) {
+            return res.status(400).json({ error: 'At least one bill item is required' });
+        }
+
+        const subtotal = Number(items.reduce((sum, item) => sum + item.line_total, 0).toFixed(2));
+        const gstPercent = Math.max(0, toNullableNumber(req.body.gst_percent ?? req.body.gstPercent ?? req.body.gst_amount ?? req.body.gstAmount) ?? 0);
+        const discountPercent = Math.max(0, toNullableNumber(req.body.discount_percent ?? req.body.discountPercent ?? req.body.discount_amount ?? req.body.discountAmount) ?? 0);
+        const gstAmount = Number((subtotal * gstPercent / 100).toFixed(2));
+        const discountAmount = Number((subtotal * discountPercent / 100).toFixed(2));
+        const grandTotal = Number(Math.max(0, subtotal + gstAmount - discountAmount).toFixed(2));
+
+        const { data, error } = await supabase
+            .from('bills')
+            .update({
+                customer_name: String(req.body.customer_name || req.body.customerName || '').trim() || null,
+                mobile_number: String(req.body.mobile_number || req.body.mobileNumber || '').trim() || null,
+                bill_datetime: req.body.bill_datetime || req.body.billDateTime || new Date().toISOString(),
+                items,
+                subtotal,
+                gst_percent: gstPercent,
+                gst_amount: gstAmount,
+                discount_percent: discountPercent,
+                discount_amount: discountAmount,
+                grand_total: grandTotal,
+                receipt_width_mm: toNullableNumber(req.body.receipt_width_mm ?? req.body.receiptWidthMm) ?? 80
+            })
+            .eq('id', req.params.id)
+            .eq('tenant_id', req.tenantId)
+            .select('*')
+            .maybeSingle();
+
+        if (error) throw error;
+        if (!data) return res.status(404).json({ error: 'Bill not found' });
+
+        return res.json(data);
+    } catch (error) {
+        if (isMissingTableError(error)) {
+            return res.status(503).json({ error: 'bills table is missing. Run schema migration.' });
+        }
+        return safeJsonError(res, error, 'Failed to update bill');
+    }
+});
+
+router.delete('/bills/:id', async (req, res) => {
+    try {
+        const { error } = await supabase
+            .from('bills')
+            .delete()
+            .eq('id', req.params.id)
+            .eq('tenant_id', req.tenantId);
+
+        if (error) throw error;
+        return res.json({ success: true });
+    } catch (error) {
+        if (isMissingTableError(error)) {
+            return res.status(503).json({ error: 'bills table is missing. Run schema migration.' });
+        }
+        return safeJsonError(res, error, 'Failed to delete bill');
+    }
+});
+
+router.get('/bills/:id', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('bills')
+            .select('*')
+            .eq('id', req.params.id)
+            .eq('tenant_id', req.tenantId)
+            .maybeSingle();
+
+        if (error) throw error;
+        if (!data) return res.status(404).json({ error: 'Bill not found' });
+
+        return res.json(data);
+    } catch (error) {
+        if (isMissingTableError(error)) {
+            return res.status(503).json({ error: 'bills table is missing. Run schema migration.' });
+        }
+        return safeJsonError(res, error, 'Failed to load bill');
+    }
+});
+
+router.get('/bills/:id/pdf', async (req, res) => {
+    try {
+        const { data: user } = await supabase
+            .from('users')
+            .select('location')
+            .eq('id', req.user.id)
+            .maybeSingle();
+
+        const { data: bill, error } = await supabase
+            .from('bills')
+            .select('*')
+            .eq('id', req.params.id)
+            .eq('tenant_id', req.tenantId)
+            .maybeSingle();
+
+        if (error) throw error;
+        if (!bill) return res.status(404).json({ error: 'Bill not found' });
+
+        const page = resolveBillPageConfig(bill.receipt_width_mm);
+        const doc = new PDFDocument({
+            autoFirstPage: false,
+            size: page.size,
+            margin: 0
+        });
+
+        const chunks = [];
+        doc.on('data', (chunk) => chunks.push(chunk));
+        doc.on('end', () => {
+            const pdf = Buffer.concat(chunks);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename=invoice_${bill.invoice_number}.pdf`);
+            res.send(pdf);
+        });
+
+        doc.addPage({ size: page.size, margin: 0 });
+        renderBillPdf(doc, {
+            tenant: {
+                ...req.tenant,
+                location: user?.location || null
+            },
+            bill
+        });
+        doc.end();
+    } catch (error) {
+        if (isMissingTableError(error)) {
+            return res.status(503).json({ error: 'bills table is missing. Run schema migration.' });
+        }
+        return safeJsonError(res, error, 'Failed to export bill PDF');
     }
 });
 
