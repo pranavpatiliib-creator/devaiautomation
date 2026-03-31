@@ -1,6 +1,10 @@
 const supabase = require('../config/supabase');
 const logger = require('../utils/appLogger');
 const { sendMetaTextMessage } = require('./metaChannelService');
+
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+const OPENAI_API_URL = 'https://api.openai.com/v1/responses';
 // Service layer for auto-reply functionality, including settings management, rule matching, job queuing, and processing.
 function computeBackoffSeconds(attempt) {
     const base = Math.min(60 * 10, 3 * Math.pow(2, Math.max(0, attempt))); // cap 10m
@@ -42,49 +46,101 @@ async function upsertSettings(tenantId, settings) {
 
     if (error) throw error;
 }
-// Find a matching automation rule reply based on the incoming message and tenant's rules.
-async function findRuleReply(tenantId, message) {
-    const text = normalizeText(message);
-    if (!text) return null;
 
+async function getKnowledgeBaseContext(tenantId) {
     const { data, error } = await supabase
-        .from('automation_rules')
-        .select('id,trigger_type,trigger_value,reply,priority')
+        .from('knowledge_base')
+        .select('question,answer')
         .eq('tenant_id', tenantId)
-        .order('priority', { ascending: false })
-        .limit(50);
+        .order('created_at', { ascending: true });
 
     if (error) {
-        if (error.code === 'PGRST205') return null;
+        if (error.code === 'PGRST205') return [];
         throw error;
     }
 
-    for (const rule of data || []) {
-        const triggerValue = normalizeText(rule.trigger_value);
-        if (!triggerValue) continue;
+    return (data || [])
+        .map((entry) => ({
+            question: String(entry.question || '').trim(),
+            answer: String(entry.answer || '').trim()
+        }))
+        .filter((entry) => entry.question && entry.answer);
+}
 
-        const triggerType = normalizeText(rule.trigger_type || 'keyword');
-        const matched =
-            triggerType === 'contains'
-                ? text.includes(triggerValue)
-                : triggerType === 'starts_with'
-                    ? text.startsWith(triggerValue)
-                    : triggerType === 'equals'
-                        ? text === triggerValue
-                        : text.includes(triggerValue);
+function extractOutputText(payload) {
+    if (typeof payload?.output_text === 'string' && payload.output_text.trim()) {
+        return payload.output_text.trim();
+    }
 
-        if (matched) {
-            return String(rule.reply || '').trim() || null;
+    const textParts = [];
+    for (const item of payload?.output || []) {
+        for (const content of item?.content || []) {
+            if (content?.type === 'output_text' && content?.text) {
+                textParts.push(content.text);
+            }
         }
     }
 
-    return null;
+    return textParts.join('\n').trim();
 }
-// Placeholder AI reply generator - in real implementation, this would call an external AI service.
-async function generateAiReply(_tenantId, incomingText) {
+
+async function generateAiReply(tenantId, incomingText) {
     const text = String(incomingText || '').trim();
     if (!text) return null;
-    return "Thanks for reaching out! Our team will get back to you shortly. If you'd like to book an appointment, please share your preferred date and time.";
+
+    const knowledge = await getKnowledgeBaseContext(tenantId);
+    if (!knowledge.length || !OPENAI_API_KEY) return null;
+
+    const knowledgeBlock = knowledge
+        .map((entry) => `Q: ${entry.question}\nA: ${entry.answer}`)
+        .join('\n\n');
+
+    const response = await fetch(OPENAI_API_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+            model: OPENAI_MODEL,
+            input: [
+                {
+                    role: 'system',
+                    content: [
+                        {
+                            type: 'input_text',
+                            text: [
+                                'You are an auto-reply assistant for a small business.',
+                                'Answer using only the business knowledge provided below.',
+                                'If the knowledge does not contain the answer, say you will share the request with the team and ask one short follow-up question.',
+                                'Keep the reply concise, practical, and customer-friendly.',
+                                '',
+                                'Business knowledge:',
+                                knowledgeBlock
+                            ].join('\n')
+                        }
+                    ]
+                },
+                {
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'input_text',
+                            text
+                        }
+                    ]
+                }
+            ]
+        })
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        const message = payload?.error?.message || `OpenAI request failed (${response.status})`;
+        throw new Error(message);
+    }
+
+    return extractOutputText(payload) || null;
 }
 // Resolve channel-specific configuration needed for dispatching a reply, such as API credentials or from numbers.
 async function enqueueAutoReplyJob({
@@ -102,8 +158,7 @@ async function enqueueAutoReplyJob({
     const delaySeconds = Math.max(0, Number(settings.delay_seconds || 0));
     const runAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
 
-    const ruleReply = await findRuleReply(tenantId, incomingMessage);
-    const replyText = ruleReply || (settings.ai_enabled ? await generateAiReply(tenantId, incomingMessage) : null);
+    const replyText = settings.ai_enabled ? await generateAiReply(tenantId, incomingMessage) : null;
     if (!replyText) return { enqueued: false, reason: 'no_reply' };
 
     const { error } = await supabase.from('auto_reply_jobs').upsert(

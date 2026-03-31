@@ -16,12 +16,10 @@ const moduleTitles = {
     conversations: 'Conversations',
     services: 'Services Management',
     offers: 'Offers Management',
-    'menu-builder': 'Menu Builder',
     appointments: 'Appointments',
     leads: 'Leads',
     posts: 'Posts',
     'knowledge-base': 'Auto Reply Setup',
-    'automation-rules': 'Automation Rules',
     channels: 'Channel Connections',
     settings: 'Settings'
 };
@@ -348,12 +346,10 @@ async function switchModule(moduleName) {
         conversations: renderConversationsModule,
         services: renderServicesModule,
         offers: renderOffersModule,
-        'menu-builder': renderMenuBuilderModule,
         appointments: renderAppointmentsModule,
         leads: renderLeadsModule,
         posts: renderPostsModule,
         'knowledge-base': renderKnowledgeBaseModule,
-        'automation-rules': renderAutomationRulesModule,
         channels: renderChannelsModule,
         settings: renderSettingsModule
     };
@@ -868,36 +864,6 @@ async function renderOffersModule() {
     });
 }
 
-async function renderMenuBuilderModule() {
-    await renderCrudModule({
-        title: 'Menu Builder',
-        endpoint: '/api/menu-options',
-        fields: [
-            { id: 'menuTitle', key: 'title', label: 'Menu Title' },
-            {
-                id: 'menuAction',
-                key: 'action_type',
-                label: 'Action Type',
-                type: 'select',
-                options: [
-                    { value: 'booking', label: 'Booking' },
-                    { value: 'services', label: 'Services' },
-                    { value: 'offers', label: 'Offers' },
-                    { value: 'location', label: 'Location' },
-                    { value: 'ai_chat', label: 'AI Chat' }
-                ]
-            },
-            { id: 'menuValue', key: 'action_value', label: 'Action Value' },
-            { id: 'menuPosition', key: 'position', label: 'Position', type: 'number', defaultValue: 1 }
-        ],
-        columns: [
-            { key: 'title', label: 'Title' },
-            { key: 'action_type', label: 'Action' },
-            { key: 'action_value', label: 'Value' },
-            { key: 'position', label: 'Position' }
-        ]
-    });
-}
 async function renderAppointmentsModule() {
     setRootHtml(`
         <section class="card stack">
@@ -1587,23 +1553,6 @@ async function renderKnowledgeBaseModule() {
         } catch (error) {
             notifyError(error);
         }
-    });
-}
-
-async function renderAutomationRulesModule() {
-    await renderCrudModule({
-        title: 'Automation Rules',
-        endpoint: '/api/automation-rules',
-        fields: [
-            { id: 'ruleKeyword', key: 'keyword', label: 'Keyword' },
-            { id: 'ruleReply', key: 'replyMessage', label: 'Reply Message', type: 'textarea', wide: true },
-            { id: 'rulePriority', key: 'priority', label: 'Priority', type: 'number', defaultValue: 1 }
-        ],
-        columns: [
-            { key: 'keyword', label: 'Keyword' },
-            { key: 'replyMessage', label: 'Reply Message' },
-            { key: 'priority', label: 'Priority' }
-        ]
     });
 }
 
