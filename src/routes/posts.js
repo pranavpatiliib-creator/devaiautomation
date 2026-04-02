@@ -252,7 +252,7 @@ router.delete('/posts/:id', rateLimiter, async (req, res) => {
         return res.status(500).json({ error: 'Failed to delete post' });
     }
 });
-// Computes an exponential backoff delay in seconds based on the number of attempts, with a base delay and a maximum cap to prevent excessively long delays.
+// Computes an exponential backoff delay in seconds based on the number of attempts, with a base delay and a maximum cap to prevent excessively long delays .
 router.post('/posts/:id/schedule', rateLimiter, async (req, res) => {
     try {
         const scheduledAt = asNullableIsoDate(req.body.scheduled_at || req.body.scheduledAt);

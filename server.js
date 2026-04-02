@@ -1,7 +1,29 @@
+const dns = require('dns');
 const express = require('express');
+const compression = require('compression');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
+
+// Prefer IPv4 to avoid intermittent IPv6/NAT64 timeouts (common on some networks/ISPs).
+// Must run before any outbound fetch (e.g., Supabase/Meta/OpenAI).
+if (typeof dns.setDefaultResultOrder === 'function') {
+    dns.setDefaultResultOrder('ipv4first');
+}
+
+// Best-effort default timeout for outbound fetch (Supabase/Meta/OpenAI).
+// Only applies when callers don't pass their own AbortSignal.
+try {
+    const originalFetch = global.fetch;
+    const timeoutMs = Number(process.env.FETCH_TIMEOUT_MS) || 30000;
+    if (typeof originalFetch === 'function' && typeof AbortSignal?.timeout === 'function' && timeoutMs > 0) {
+        global.fetch = (input, init = {}) => {
+            if (init && init.signal) return originalFetch(input, init);
+            return originalFetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+        };
+    }
+} catch (_) { }
+
 const supabase = require('./src/config/supabase');
 
 const app = express();
@@ -60,6 +82,9 @@ function resolveTrustProxySetting(value) {
 app.set('trust proxy', resolveTrustProxySetting(process.env.TRUST_PROXY));
 
 // ================= MIDDLEWARE =================
+// Compress text-based responses (HTML/JSON/CSS/JS) to reduce transfer time.
+app.use(compression());
+
 const allowedOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map((item) => item.trim())
@@ -76,7 +101,19 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 
 // Serve static files BEFORE routes - critical for CSS/JS loading
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+    etag: true,
+    lastModified: true,
+    setHeaders(res, filePath) {
+        const lower = String(filePath).toLowerCase();
+        // Conservative caching: improves repeat loads without risking "stuck" deployments.
+        if (/\.(css|js)$/.test(lower)) {
+            res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour
+        } else if (/\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|otf)$/.test(lower)) {
+            res.setHeader('Cache-Control', 'public, max-age=604800'); // 7 days
+        }
+    }
+}));
 
 // ================= ROUTES =================
 const authRoutes = require('./src/routes/auth');
@@ -85,6 +122,7 @@ const publicRoutes = require('./src/routes/public');
 const saasRoutes = require('./src/routes/saas');
 const metaAuthRoutes = require('./src/routes/metaAuth');
 const metaWebhookRoutes = require('./src/routes/metaWebhooks');
+const whatsappWebhookRoutes = require('./src/routes/whatsappWebhooks');
 const postsRoutes = require('./src/routes/posts');
 const autoReplyRoutes = require('./src/routes/autoReply');
 const { startBackgroundRunner } = require('./src/workers/backgroundRunner');
@@ -97,6 +135,7 @@ app.use('/api', metaAuthRoutes);
 app.use('/api', postsRoutes);
 app.use('/api', autoReplyRoutes);
 app.use('/webhooks', metaWebhookRoutes);
+app.use('/webhooks', whatsappWebhookRoutes);
 
 // ================= SERVE VIEWS =================
 // Page routes (must be after API routes to avoid conflicts)
@@ -204,7 +243,8 @@ if (require.main === module) {
         console.log('API: http://localhost:' + PORT);
         console.log('Frontend: http://localhost:' + PORT + '/');
         logSupabaseConnectionStatus();
-        startBackgroundRunner({ intervalMs: Number(process.env.BACKGROUND_INTERVAL_MS) || 5000 });
+        // Default to a less aggressive poll to avoid unnecessary DB load on small instances.
+        startBackgroundRunner({ intervalMs: Number(process.env.BACKGROUND_INTERVAL_MS) || 30000 });
     });
 }
 

@@ -9,6 +9,8 @@ const { verifyToken } = require('../middleware/auth');
 const { requireTenant } = require('../middleware/tenant');
 const { connectionReadLimiter, connectionWriteLimiter } = require('../middleware/rateLimiter');
 const { encryptSecret, decryptSecret, maskSecret } = require('../utils/secretCrypto');
+const { generateFlyerAndSave } = require('../services/flyerService');
+const logger = require('../utils/appLogger');
 
 router.use(verifyToken, requireTenant);
 
@@ -124,14 +126,123 @@ function normalizeBillItems(items) {
             const name = String(item.name || item.product_name || item.productName || item.service_name || '').trim();
             const quantity = Math.max(1, toNumber(item.quantity, 1));
             const price = Math.max(0, toNullableNumber(item.price) ?? 0);
+            const itemType = String(item.item_type || item.type || '').trim().toLowerCase();
+            const refId = String(item.ref_id || item.refId || item.product_id || item.productId || item.service_id || item.serviceId || '').trim();
             return {
                 name,
                 quantity,
                 price,
-                line_total: Number((quantity * price).toFixed(2))
+                line_total: Number((quantity * price).toFixed(2)),
+                item_type: itemType || null,
+                ref_id: refId || null
             };
         })
         .filter((item) => item.name);
+}
+
+async function resolveProductIdForBillItem(tenantId, item) {
+    const explicitType = String(item?.item_type || '').toLowerCase();
+    const refId = String(item?.ref_id || '').trim();
+    if (explicitType === 'product' && refId) return refId;
+    if (explicitType === 'service') return null;
+
+    // Best-effort fallback: if user typed a product name manually, attempt to resolve it.
+    const name = String(item?.name || '').trim();
+    if (!name) return null;
+
+    const { data, error } = await supabase
+        .from('products')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .ilike('product_name', name)
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        if (isMissingTableError(error)) return null;
+        throw error;
+    }
+
+    return data?.id || null;
+}
+
+async function buildProductStockDeltas(tenantId, items) {
+    const deltas = new Map(); // productId -> qty (positive means deduct)
+
+    for (const item of items || []) {
+        const quantity = Math.max(1, toNumber(item?.quantity, 1));
+        let productId = null;
+
+        if (String(item?.item_type || '').toLowerCase() === 'product') {
+            productId = String(item?.ref_id || '').trim() || null;
+        }
+
+        const itemType = String(item?.item_type || '').toLowerCase();
+        if (!productId && !itemType) {
+            productId = await resolveProductIdForBillItem(tenantId, item);
+        }
+
+        if (!productId) continue;
+
+        deltas.set(productId, (deltas.get(productId) || 0) + quantity);
+    }
+
+    return deltas;
+}
+
+async function applyProductStockAdjustments({ tenantId, deltas }) {
+    const productIds = Array.from(deltas.keys());
+    if (productIds.length === 0) return;
+
+    const { data, error } = await supabase
+        .from('products')
+        .select('id,product_name,stock_quantity')
+        .eq('tenant_id', tenantId)
+        .in('id', productIds);
+
+    if (error) {
+        if (isMissingTableError(error)) return;
+        throw error;
+    }
+
+    const rows = data || [];
+    const byId = new Map(rows.map((row) => [row.id, row]));
+
+    const missing = productIds.filter((id) => !byId.has(id));
+    if (missing.length) {
+        const message = `Some products were not found for inventory deduction: ${missing.join(', ')}`;
+        const err = new Error(message);
+        err.status = 400;
+        throw err;
+    }
+
+    for (const [productId, qty] of deltas.entries()) {
+        const row = byId.get(productId);
+        const current = Number(row?.stock_quantity || 0);
+        const next = current - Number(qty || 0); // qty>0 deducts, qty<0 restores
+        if (next < 0) {
+            const name = row?.product_name ? `"${row.product_name}"` : productId;
+            const err = new Error(`Insufficient stock for product ${name}. Available ${current}, required ${qty}.`);
+            err.status = 400;
+            throw err;
+        }
+    }
+
+    const now = new Date().toISOString();
+    for (const [productId, qty] of deltas.entries()) {
+        const current = Number(byId.get(productId)?.stock_quantity || 0);
+        const next = Math.max(0, current - Number(qty || 0));
+        const { error: updateError } = await supabase
+            .from('products')
+            .update({ stock_quantity: next, updated_at: now })
+            .eq('tenant_id', tenantId)
+            .eq('id', productId);
+
+        if (updateError) {
+            if (isMissingTableError(updateError)) return;
+            throw updateError;
+        }
+    }
 }
 
 async function getNextInvoiceNumber(tenantId) {
@@ -404,6 +515,56 @@ async function getChartRows(tableName, tenantId, since) {
     return data || [];
 }
 
+async function getOutOfStockCount(tenantId) {
+    const { count, error } = await supabase
+        .from('products')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .lte('stock_quantity', 0);
+
+    if (error) {
+        if (isMissingTableError(error)) return 0;
+        throw error;
+    }
+
+    return count || 0;
+}
+
+async function getLowStockCount(tenantId, threshold = 5) {
+    const limit = Math.max(1, toNumber(threshold, 5));
+    const { count, error } = await supabase
+        .from('products')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .gt('stock_quantity', 0)
+        .lte('stock_quantity', limit);
+
+    if (error) {
+        if (isMissingTableError(error)) return 0;
+        throw error;
+    }
+
+    return count || 0;
+}
+
+async function getSalesTotalBetween(tenantId, startIso, endIso) {
+    let query = supabase
+        .from('bills')
+        .select('grand_total,bill_datetime')
+        .eq('tenant_id', tenantId);
+
+    if (startIso) query = query.gte('bill_datetime', startIso);
+    if (endIso) query = query.lt('bill_datetime', endIso);
+
+    const { data, error } = await query;
+    if (error) {
+        if (isMissingTableError(error)) return 0;
+        throw error;
+    }
+
+    return Number((data || []).reduce((sum, row) => sum + Number(row.grand_total || 0), 0).toFixed(2));
+}
+
 router.get('/me', async (req, res) => {
     try {
         let { data: user, error } = await supabase
@@ -450,6 +611,9 @@ router.get('/dashboard/overview', async (req, res) => {
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
 
         const since = thirtyDaysAgo.toISOString();
+        const startOfToday = new Date(`${today}T00:00:00.000Z`).toISOString();
+        const startOfTomorrow = new Date(Date.parse(startOfToday) + 24 * 60 * 60 * 1000).toISOString();
+        const startOfMonth = new Date(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1).toISOString();
 
         const [
             totalCustomers,
@@ -457,7 +621,11 @@ router.get('/dashboard/overview', async (req, res) => {
             totalLeads,
             upcomingAppointments,
             conversationRows,
-            leadRows
+            leadRows,
+            outOfStockCount,
+            lowStockCount,
+            salesToday,
+            salesMonth
         ] = await Promise.all([
             getCountForTenant('customers', req.tenantId),
             getCountForTenant('conversations', req.tenantId),
@@ -468,7 +636,11 @@ router.get('/dashboard/overview', async (req, res) => {
                     .in('status', ['scheduled', 'confirmed', 'rescheduled'])
             ),
             getChartRows('conversations', req.tenantId, since),
-            getChartRows('leads', req.tenantId, since)
+            getChartRows('leads', req.tenantId, since),
+            getOutOfStockCount(req.tenantId),
+            getLowStockCount(req.tenantId, Number(process.env.LOW_STOCK_THRESHOLD) || 5),
+            getSalesTotalBetween(req.tenantId, startOfToday, startOfTomorrow),
+            getSalesTotalBetween(req.tenantId, startOfMonth, null)
         ]);
 
         return res.json({
@@ -477,6 +649,17 @@ router.get('/dashboard/overview', async (req, res) => {
                 conversations: totalConversations,
                 leads: totalLeads,
                 upcomingAppointments
+            },
+            extra: {
+                inventory: {
+                    outOfStock: outOfStockCount,
+                    lowStock: lowStockCount,
+                    lowStockThreshold: Number(process.env.LOW_STOCK_THRESHOLD) || 5
+                },
+                sales: {
+                    today: salesToday,
+                    month: salesMonth
+                }
             },
             charts: {
                 messagesPerDay: buildDailySeries(conversationRows, 14),
@@ -831,6 +1014,91 @@ router.delete('/offers/:id', async (req, res) => {
     }
 });
 
+router.post('/offers/:id/publish', async (req, res) => {
+    try {
+        const offerId = req.params.id;
+        const { data: offer, error } = await supabase
+            .from('offers')
+            .select('id,title,description,discount,valid_until,is_active,created_at')
+            .eq('tenant_id', req.tenantId)
+            .eq('id', offerId)
+            .maybeSingle();
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.status(503).json({ error: 'offers table is missing. Run schema migration.' });
+            }
+            throw error;
+        }
+        if (!offer) return res.status(404).json({ error: 'Offer not found' });
+        if (offer.is_active === false) return res.status(400).json({ error: 'Offer is inactive' });
+
+        const discountLine = offer.discount ? `${offer.discount}% OFF` : '';
+        const validLine = offer.valid_until ? `Valid until: ${String(offer.valid_until).slice(0, 10)}` : '';
+        const offerLines = [discountLine, validLine].filter(Boolean).join(' • ');
+
+        const flyer = await generateFlyerAndSave({
+            tenant: req.tenant,
+            flyer: {
+                headline: offer.title,
+                subheadline: offerLines,
+                offer: offer.description || offerLines,
+                theme: req.tenant?.industry || ''
+            }
+        });
+
+        const caption = (flyer.caption || '').trim() || `${offer.title}\n${offerLines}\nDM us to book now.`;
+        const mediaUrls = flyer.image_url ? [flyer.image_url] : null;
+        const nowIso = new Date().toISOString();
+
+        const { data: created, error: createError } = await supabase
+            .from('social_posts')
+            .insert([
+                {
+                    tenant_id: req.tenantId,
+                    platform: 'facebook',
+                    content: caption,
+                    media_urls: mediaUrls,
+                    status: 'scheduled',
+                    scheduled_at: nowIso,
+                    updated_at: nowIso
+                },
+                {
+                    tenant_id: req.tenantId,
+                    platform: 'instagram',
+                    content: caption,
+                    media_urls: mediaUrls,
+                    status: 'scheduled',
+                    scheduled_at: nowIso,
+                    updated_at: nowIso
+                }
+            ])
+            .select('id,platform,status,scheduled_at')
+            .order('scheduled_at', { ascending: true });
+
+        if (createError) {
+            if (isMissingTableError(createError)) {
+                return res.status(503).json({ error: 'social_posts table is missing. Run schema migration.' });
+            }
+            throw createError;
+        }
+
+        await logger.logAutomation({
+            tenantId: req.tenantId,
+            workflowName: 'offer_publish',
+            status: 'queued',
+            payload: {
+                offer_id: offerId,
+                posts: (created || []).map((row) => ({ id: row.id, platform: row.platform }))
+            }
+        });
+
+        return res.json({ success: true, posts: created || [] });
+    } catch (error) {
+        return safeJsonError(res, error, 'Failed to publish offer');
+    }
+});
+
 router.get('/menu-options', async (req, res) => {
     try {
         const { data, error } = await supabase
@@ -944,7 +1212,7 @@ router.get('/products', async (req, res) => {
     try {
         const { data, error } = await supabase
             .from('products')
-            .select('id,product_name,category,description,price,stock_quantity,is_active,created_at')
+            .select('id,product_name,brand_name,category,description,price,stock_quantity,is_active,created_at,updated_at')
             .eq('tenant_id', req.tenantId)
             .order('created_at', { ascending: false });
 
@@ -962,6 +1230,7 @@ router.get('/products', async (req, res) => {
 router.post('/products', async (req, res) => {
     try {
         const productName = String(req.body.product_name || req.body.productName || '').trim();
+        const brandName = String(req.body.brand_name || req.body.brandName || '').trim();
         const category = String(req.body.category || '').trim();
         const description = String(req.body.description || '').trim();
 
@@ -974,13 +1243,15 @@ router.post('/products', async (req, res) => {
             .insert({
                 tenant_id: req.tenantId,
                 product_name: productName,
+                brand_name: brandName || null,
                 category: category || null,
                 description: description || null,
                 price: toNullableNumber(req.body.price),
                 stock_quantity: toNumber(req.body.stock_quantity ?? req.body.stockQuantity, 0),
-                is_active: toBoolean(req.body.is_active ?? req.body.isActive, true)
+                is_active: toBoolean(req.body.is_active ?? req.body.isActive, true),
+                updated_at: new Date().toISOString()
             })
-            .select('id,product_name,category,description,price,stock_quantity,is_active,created_at')
+            .select('id,product_name,brand_name,category,description,price,stock_quantity,is_active,created_at,updated_at')
             .single();
 
         if (error) throw error;
@@ -1042,6 +1313,9 @@ router.put('/products/:id', async (req, res) => {
         if (req.body.product_name !== undefined || req.body.productName !== undefined) {
             payload.product_name = String(req.body.product_name || req.body.productName || '').trim();
         }
+        if (req.body.brand_name !== undefined || req.body.brandName !== undefined) {
+            payload.brand_name = String(req.body.brand_name || req.body.brandName || '').trim() || null;
+        }
         if (req.body.category !== undefined) payload.category = String(req.body.category || '').trim() || null;
         if (req.body.description !== undefined) payload.description = String(req.body.description || '').trim() || null;
         if (req.body.price !== undefined) payload.price = toNullableNumber(req.body.price);
@@ -1056,12 +1330,14 @@ router.put('/products/:id', async (req, res) => {
             return res.status(400).json({ error: 'No fields provided for update' });
         }
 
+        payload.updated_at = new Date().toISOString();
+
         const { data, error } = await supabase
             .from('products')
             .update(payload)
             .eq('id', req.params.id)
             .eq('tenant_id', req.tenantId)
-            .select('id,product_name,category,description,price,stock_quantity,is_active,created_at')
+            .select('id,product_name,brand_name,category,description,price,stock_quantity,is_active,created_at,updated_at')
             .maybeSingle();
 
         if (error) throw error;
@@ -1103,7 +1379,7 @@ router.get('/billing/catalog', async (req, res) => {
         const [productsRes, servicesRes] = await Promise.all([
             supabase
                 .from('products')
-                .select('id,product_name,price,category')
+                .select('id,product_name,price,category,stock_quantity')
                 .eq('tenant_id', req.tenantId)
                 .eq('is_active', true)
                 .ilike('product_name', `%${q}%`)
@@ -1121,7 +1397,8 @@ router.get('/billing/catalog', async (req, res) => {
             type: 'product',
             name: item.product_name,
             price: Number(item.price || 0),
-            category: item.category || ''
+            category: item.category || '',
+            stock_quantity: Number(item.stock_quantity || 0)
         }));
         const services = (servicesRes.data || []).map((item) => ({
             id: item.id,
@@ -1169,6 +1446,9 @@ router.post('/bills', async (req, res) => {
             return res.status(400).json({ error: 'At least one bill item is required' });
         }
 
+        const stockDeltas = await buildProductStockDeltas(req.tenantId, items);
+        await applyProductStockAdjustments({ tenantId: req.tenantId, deltas: stockDeltas });
+
         const subtotal = Number(items.reduce((sum, item) => sum + item.line_total, 0).toFixed(2));
         const gstPercent = Math.max(0, toNullableNumber(req.body.gst_percent ?? req.body.gstPercent ?? req.body.gst_amount ?? req.body.gstAmount) ?? 0);
         const discountPercent = Math.max(0, toNullableNumber(req.body.discount_percent ?? req.body.discountPercent ?? req.body.discount_amount ?? req.body.discountAmount) ?? 0);
@@ -1203,16 +1483,42 @@ router.post('/bills', async (req, res) => {
         if (isMissingTableError(error)) {
             return res.status(503).json({ error: 'bills table is missing. Run schema migration.' });
         }
+        if (error?.status) {
+            return res.status(error.status).json({ error: error.message });
+        }
         return safeJsonError(res, error, 'Failed to create bill');
     }
 });
 
 router.put('/bills/:id', async (req, res) => {
     try {
+        const { data: existingBill, error: existingError } = await supabase
+            .from('bills')
+            .select('id,items')
+            .eq('id', req.params.id)
+            .eq('tenant_id', req.tenantId)
+            .maybeSingle();
+
+        if (existingError) throw existingError;
+        if (!existingBill) return res.status(404).json({ error: 'Bill not found' });
+
         const items = normalizeBillItems(req.body.items);
         if (!items.length) {
             return res.status(400).json({ error: 'At least one bill item is required' });
         }
+
+        const oldItems = normalizeBillItems(existingBill.items);
+        const oldDeltas = await buildProductStockDeltas(req.tenantId, oldItems);
+        const newDeltas = await buildProductStockDeltas(req.tenantId, items);
+        const adjustments = new Map();
+
+        const allIds = new Set([...oldDeltas.keys(), ...newDeltas.keys()]);
+        for (const productId of allIds) {
+            const diff = (newDeltas.get(productId) || 0) - (oldDeltas.get(productId) || 0); // + deduct, - restore
+            if (diff !== 0) adjustments.set(productId, diff);
+        }
+
+        await applyProductStockAdjustments({ tenantId: req.tenantId, deltas: adjustments });
 
         const subtotal = Number(items.reduce((sum, item) => sum + item.line_total, 0).toFixed(2));
         const gstPercent = Math.max(0, toNullableNumber(req.body.gst_percent ?? req.body.gstPercent ?? req.body.gst_amount ?? req.body.gstAmount) ?? 0);
@@ -1249,12 +1555,34 @@ router.put('/bills/:id', async (req, res) => {
         if (isMissingTableError(error)) {
             return res.status(503).json({ error: 'bills table is missing. Run schema migration.' });
         }
+        if (error?.status) {
+            return res.status(error.status).json({ error: error.message });
+        }
         return safeJsonError(res, error, 'Failed to update bill');
     }
 });
 
 router.delete('/bills/:id', async (req, res) => {
     try {
+        const { data: existingBill, error: existingError } = await supabase
+            .from('bills')
+            .select('id,items')
+            .eq('id', req.params.id)
+            .eq('tenant_id', req.tenantId)
+            .maybeSingle();
+
+        if (existingError) throw existingError;
+        if (!existingBill) return res.status(404).json({ error: 'Bill not found' });
+
+        // Restore inventory for products that were billed.
+        const oldItems = normalizeBillItems(existingBill.items);
+        const deltas = await buildProductStockDeltas(req.tenantId, oldItems);
+        const restore = new Map();
+        for (const [productId, qty] of deltas.entries()) {
+            restore.set(productId, -Math.max(1, toNumber(qty, 1)));
+        }
+        await applyProductStockAdjustments({ tenantId: req.tenantId, deltas: restore });
+
         const { error } = await supabase
             .from('bills')
             .delete()
@@ -1266,6 +1594,9 @@ router.delete('/bills/:id', async (req, res) => {
     } catch (error) {
         if (isMissingTableError(error)) {
             return res.status(503).json({ error: 'bills table is missing. Run schema migration.' });
+        }
+        if (error?.status) {
+            return res.status(error.status).json({ error: error.message });
         }
         return safeJsonError(res, error, 'Failed to delete bill');
     }

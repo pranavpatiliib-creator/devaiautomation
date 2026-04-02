@@ -82,7 +82,7 @@ router.post('/auto-reply/incoming', rateLimiter, async (req, res) => {
             }
         }
 
-        // Ensure customer exists (dedupe by tenant/channel/sender_id)
+// Ensure customer exists (dedupe by tenant/channel/sender_id)
         let customerId = null;
         const { data: customer, error: customerError } = await supabase
             .from('customers')

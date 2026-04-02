@@ -2,10 +2,24 @@ const supabase = require('../config/supabase');
 const { decryptSecret } = require('../utils/secretCrypto');
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v19.0';
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
 
 function buildGraphUrl(path, params) {
     const search = new URLSearchParams(params);
     return `https://graph.facebook.com/${META_GRAPH_VERSION}${path}?${search.toString()}`;
+}
+
+function resolvePublicUrl(value) {
+    const url = String(value || '').trim();
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) return url;
+    if (url.startsWith('/')) {
+        if (!PUBLIC_BASE_URL) {
+            throw new Error('Missing PUBLIC_BASE_URL for resolving public media URLs');
+        }
+        return `${PUBLIC_BASE_URL}${url}`;
+    }
+    return url;
 }
 
 async function fetchJson(url, options = {}) {
@@ -65,7 +79,7 @@ async function sendMetaTextMessage({ tenantId, channel, recipientId, text }) {
 
 async function publishFacebookPost({ tenantId, content, mediaUrls }) {
     const connection = await getActiveConnection(tenantId, 'facebook');
-    const primaryMediaUrl = Array.isArray(mediaUrls) ? String(mediaUrls[0] || '').trim() : '';
+    const primaryMediaUrl = Array.isArray(mediaUrls) ? resolvePublicUrl(mediaUrls[0]) : '';
 
     if (primaryMediaUrl) {
         const data = await fetchJson(buildGraphUrl(`/${connection.page_id}/photos`, {
@@ -87,7 +101,7 @@ async function publishFacebookPost({ tenantId, content, mediaUrls }) {
 
 async function publishInstagramPost({ tenantId, content, mediaUrls }) {
     const connection = await getActiveConnection(tenantId, 'instagram');
-    const primaryMediaUrl = Array.isArray(mediaUrls) ? String(mediaUrls[0] || '').trim() : '';
+    const primaryMediaUrl = Array.isArray(mediaUrls) ? resolvePublicUrl(mediaUrls[0]) : '';
 
     if (!primaryMediaUrl) {
         throw new Error('Instagram publishing requires at least one public image URL');
@@ -107,9 +121,39 @@ async function publishInstagramPost({ tenantId, content, mediaUrls }) {
     return { success: true, external_id: published.id || creation.id || null, raw: published };
 }
 
+async function sendWhatsAppTextMessage({ tenantId, recipientId, text }) {
+    const connection = await getActiveConnection(tenantId, 'whatsapp');
+    const phoneNumberId = String(connection.page_id || '').trim();
+    if (!phoneNumberId) {
+        throw new Error('WhatsApp connection is missing phone_number_id (stored in channel_connections.page_id)');
+    }
+
+    const payload = {
+        messaging_product: 'whatsapp',
+        to: String(recipientId),
+        type: 'text',
+        text: { body: String(text) }
+    };
+
+    const data = await fetchJson(buildGraphUrl(`/${phoneNumberId}/messages`, {
+        access_token: connection.decrypted_access_token
+    }), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+
+    return {
+        success: true,
+        external_id: data?.messages?.[0]?.id || null,
+        raw: data
+    };
+}
+
 module.exports = {
     getActiveConnection,
     sendMetaTextMessage,
+    sendWhatsAppTextMessage,
     publishFacebookPost,
     publishInstagramPost
 };

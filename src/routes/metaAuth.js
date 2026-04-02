@@ -14,7 +14,7 @@ const META_APP_ID = process.env.META_APP_ID;
 const META_APP_SECRET = process.env.META_APP_SECRET;
 const META_REDIRECT_URI = process.env.META_REDIRECT_URI;
 const META_SCOPES = process.env.META_SCOPES
-    || 'pages_show_list,pages_read_engagement,pages_messaging,pages_manage_metadata,instagram_basic,instagram_manage_messages';
+    || 'pages_show_list,pages_read_engagement,pages_manage_posts,pages_messaging,pages_manage_metadata,instagram_basic,instagram_manage_messages,instagram_content_publish';
 
 function isMissingColumnError(error, columnName = '') {
     if (error?.code !== '42703') return false;
@@ -188,7 +188,7 @@ router.get('/meta/oauth/callback', oauthCallbackLimiter, async (req, res) => {
         const longLivedToken = longTokenPayload.access_token;
         const pagesPayload = await fetchJson(`https://graph.facebook.com/${META_GRAPH_VERSION}/me/accounts?${new URLSearchParams({
             access_token: longLivedToken,
-            fields: 'id,name,access_token,picture{url},instagram_business_account{id,username,name,profile_picture_url}'
+            fields: 'id,name,access_token,picture{url},instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}'
         }).toString()}`);
 
         const pages = Array.isArray(pagesPayload?.data) ? pagesPayload.data : [];
@@ -214,15 +214,21 @@ router.get('/meta/oauth/callback', oauthCallbackLimiter, async (req, res) => {
                 connected.push(row);
             }
 
-            if (requestedChannel === 'instagram' && page.instagram_business_account?.id) {
-                const ig = page.instagram_business_account;
+            const igProfile = page.instagram_business_account?.id
+                ? { profile: page.instagram_business_account, profileType: 'instagram_business' }
+                : (page.connected_instagram_account?.id
+                    ? { profile: page.connected_instagram_account, profileType: 'instagram_creator' }
+                    : null);
+
+            if (requestedChannel === 'instagram' && igProfile) {
+                const ig = igProfile.profile;
                 const row = await upsertConnection({
                     tenantId,
                     channel: 'instagram',
                     pageId: String(ig.id),
                     token: page.access_token || longLivedToken,
                     metadata: {
-                        profile_type: 'instagram_business',
+                        profile_type: igProfile.profileType,
                         username: ig.username || '',
                         name: ig.name || '',
                         profile_picture: ig.profile_picture_url || null,

@@ -6,6 +6,7 @@ const state = {
     autoReplyPromptOpen: false,
     autoReplySetupCache: null,
     settingsLogoDataUrl: '',
+    dashboardConfig: null,
     charts: {
         messages: null,
         leads: null
@@ -215,9 +216,263 @@ function normalizeProfessionKey(value) {
     if (text.includes('salon') || text.includes('beauty') || text.includes('spa') || text.includes('barber')) return 'salon';
     if (text.includes('clinic') || text.includes('doctor') || text.includes('dental') || text.includes('hospital')) return 'clinic';
     if (text.includes('restaurant') || text.includes('cafe') || text.includes('food') || text.includes('bakery')) return 'restaurant';
+    if (text.includes('hotel') || text.includes('resort') || text.includes('lodge')) return 'hotel';
     if (text.includes('shop') || text.includes('store') || text.includes('retail') || text.includes('mobile')) return 'retail';
     if (text.includes('coach') || text.includes('tuition') || text.includes('class') || text.includes('education') || text.includes('training')) return 'coaching';
     return 'default';
+}
+
+function getDashboardConfigForProfession(professionKey) {
+    const base = {
+        professionKey,
+        defaultModule: 'dashboard',
+        enabledModules: [
+            'dashboard',
+            'customers',
+            'conversations',
+            'services',
+            'offers',
+            'products',
+            'billing',
+            'appointments',
+            'leads',
+            'posts',
+            'knowledge-base',
+            'channels',
+            'settings'
+        ],
+        moduleLabels: {},
+        moduleTitles: {},
+        overviewStats: ['customers', 'conversations', 'leads', 'appointments'],
+        dashboardWidgets: ['messagesChart', 'leadsChart', 'inventoryAlerts', 'salesSummary']
+    };
+
+    if (professionKey === 'salon') {
+        return {
+            ...base,
+            defaultModule: 'appointments',
+            enabledModules: [
+                'dashboard',
+                'customers',
+                'conversations',
+                'services',
+                'offers',
+                'appointments',
+                'leads',
+                'posts',
+                'knowledge-base',
+                'channels',
+                'settings'
+            ],
+            moduleLabels: {
+                appointments: 'Bookings',
+                'knowledge-base': 'Auto Replies'
+            },
+            moduleTitles: {
+                services: 'Services & Pricing',
+                appointments: 'Bookings & Slots',
+                'knowledge-base': 'Auto Replies Setup'
+            },
+            overviewStats: ['customers', 'conversations', 'leads', 'appointments']
+        };
+    }
+
+    if (professionKey === 'clinic') {
+        return {
+            ...base,
+            defaultModule: 'appointments',
+            enabledModules: [
+                'dashboard',
+                'customers',
+                'conversations',
+                'services',
+                'billing',
+                'appointments',
+                'leads',
+                'knowledge-base',
+                'channels',
+                'settings'
+            ],
+            moduleLabels: {
+                services: 'Treatments',
+                billing: 'Billing',
+                'knowledge-base': 'Auto Replies'
+            },
+            moduleTitles: {
+                services: 'Treatments & Fees',
+                billing: 'Billing',
+                appointments: 'Appointments',
+                'knowledge-base': 'Auto Replies Setup'
+            },
+            overviewStats: ['customers', 'conversations', 'leads', 'appointments']
+        };
+    }
+
+    if (professionKey === 'restaurant') {
+        return {
+            ...base,
+            defaultModule: 'billing',
+            enabledModules: [
+                'dashboard',
+                'customers',
+                'conversations',
+                'products',
+                'offers',
+                'billing',
+                'leads',
+                'posts',
+                'knowledge-base',
+                'channels',
+                'settings'
+            ],
+            moduleLabels: {
+                products: 'Menu',
+                billing: 'Billing',
+                'knowledge-base': 'Auto Replies'
+            },
+            moduleTitles: {
+                products: 'Menu Management',
+                billing: 'Billing',
+                'knowledge-base': 'Auto Replies Setup'
+            },
+            overviewStats: ['customers', 'conversations', 'leads'],
+            dashboardWidgets: ['messagesChart', 'leadsChart', 'inventoryAlerts', 'salesSummary']
+        };
+    }
+
+    if (professionKey === 'hotel') {
+        return {
+            ...base,
+            defaultModule: 'appointments',
+            enabledModules: [
+                'dashboard',
+                'customers',
+                'conversations',
+                'products',
+                'offers',
+                'billing',
+                'appointments',
+                'leads',
+                'posts',
+                'knowledge-base',
+                'channels',
+                'settings'
+            ],
+            moduleLabels: {
+                products: 'Menu',
+                appointments: 'Table Book',
+                billing: 'Billing',
+                'knowledge-base': 'Auto Replies'
+            },
+            moduleTitles: {
+                products: 'Menu Management',
+                appointments: 'Table Book',
+                billing: 'Billing',
+                'knowledge-base': 'Auto Replies Setup'
+            },
+            overviewStats: ['customers', 'conversations', 'leads', 'appointments'],
+            dashboardWidgets: ['messagesChart', 'leadsChart', 'inventoryAlerts', 'salesSummary']
+        };
+    }
+
+    if (professionKey === 'retail') {
+        return {
+            ...base,
+            defaultModule: 'products',
+            enabledModules: [
+                'dashboard',
+                'customers',
+                'conversations',
+                'products',
+                'offers',
+                'billing',
+                'leads',
+                'posts',
+                'knowledge-base',
+                'channels',
+                'settings'
+            ],
+            moduleLabels: {
+                products: 'Inventory',
+                billing: 'Billing',
+                'knowledge-base': 'Auto Replies'
+            },
+            moduleTitles: {
+                products: 'Inventory Management',
+                billing: 'Billing',
+                'knowledge-base': 'Auto Replies Setup'
+            },
+            overviewStats: ['customers', 'conversations', 'leads'],
+            dashboardWidgets: ['messagesChart', 'leadsChart', 'inventoryAlerts', 'salesSummary']
+        };
+    }
+
+    if (professionKey === 'coaching') {
+        return {
+            ...base,
+            defaultModule: 'leads',
+            enabledModules: [
+                'dashboard',
+                'customers',
+                'conversations',
+                'services',
+                'offers',
+                'billing',
+                'appointments',
+                'leads',
+                'posts',
+                'knowledge-base',
+                'channels',
+                'settings'
+            ],
+            moduleLabels: {
+                services: 'Programs',
+                appointments: 'Batches',
+                'knowledge-base': 'Auto Replies'
+            },
+            moduleTitles: {
+                services: 'Programs & Pricing',
+                appointments: 'Batches & Sessions',
+                'knowledge-base': 'Auto Replies Setup'
+            },
+            overviewStats: ['customers', 'conversations', 'leads', 'appointments']
+        };
+    }
+
+    return base;
+}
+
+function applyDashboardConfig(config) {
+    state.dashboardConfig = config;
+
+    const sidebar = document.getElementById('sidebarNav');
+    if (sidebar) {
+        sidebar.querySelectorAll('.nav-item').forEach((button) => {
+            const moduleKey = button.dataset.module;
+            const isEnabled = config.enabledModules.includes(moduleKey);
+            button.style.display = isEnabled ? '' : 'none';
+            if (isEnabled) {
+                const label = config.moduleLabels[moduleKey];
+                if (label) button.textContent = label;
+            }
+        });
+    }
+
+    Object.entries(config.moduleTitles || {}).forEach(([key, title]) => {
+        moduleTitles[key] = title;
+    });
+
+    Object.entries(config.moduleLabels || {}).forEach(([key, label]) => {
+        moduleTitles[key] = label;
+    });
+
+    if (!config.enabledModules.includes(state.activeModule)) {
+        state.activeModule = config.defaultModule && config.enabledModules.includes(config.defaultModule)
+            ? config.defaultModule
+            : 'dashboard';
+    }
+
+    setModuleTitle(state.activeModule);
 }
 
 function getAutoReplyQuestions(profile) {
@@ -445,6 +700,8 @@ async function loadProfileHeader() {
         const profile = await authedRequest('/api/settings/profile');
         const businessName = profile?.tenant?.business_name || localStorage.getItem('businessName') || 'LeadFlow AI';
         const name = profile?.user?.name || localStorage.getItem('name') || 'User';
+        const professionKey = normalizeProfessionKey(profile?.tenant?.industry || profile?.user?.profession);
+        applyDashboardConfig(getDashboardConfigForProfession(professionKey));
         state.settingsLogoDataUrl = profile?.tenant?.business_logo || '';
         renderSidebarLogoBadge();
 
@@ -453,8 +710,10 @@ async function loadProfileHeader() {
 
         if (businessEl) businessEl.textContent = businessName;
         if (userEl) userEl.textContent = name;
+        return profile;
     } catch (error) {
         console.error('Profile load failed:', error);
+        return null;
     }
 }
 
@@ -506,34 +765,69 @@ async function switchModule(moduleName) {
 }
 
 async function renderDashboardModule() {
+    const overviewStats = state.dashboardConfig?.overviewStats || ['customers', 'conversations', 'leads', 'appointments'];
+    const widgets = state.dashboardConfig?.dashboardWidgets || ['messagesChart', 'leadsChart', 'inventoryAlerts', 'salesSummary'];
+    const statsHtml = [
+        overviewStats.includes('customers')
+            ? `<article class="stat-item"><label>Total Customers</label><strong id="statCustomers">0</strong></article>`
+            : '',
+        overviewStats.includes('conversations')
+            ? `<article class="stat-item"><label>Total Conversations</label><strong id="statConversations">0</strong></article>`
+            : '',
+        overviewStats.includes('leads')
+            ? `<article class="stat-item"><label>Total Leads</label><strong id="statLeads">0</strong></article>`
+            : '',
+        overviewStats.includes('appointments')
+            ? `<article class="stat-item"><label>Upcoming Appointments</label><strong id="statAppointments">0</strong></article>`
+            : ''
+    ].filter(Boolean).join('');
+
+    const kpiHtml = `
+        <section class="card stack" ${widgets.includes('salesSummary') || widgets.includes('inventoryAlerts') ? '' : 'style="display:none;"'}>
+            <h3 style="margin:0;">Quick Summary</h3>
+            <div class="stats-grid" style="margin-top:12px;">
+                ${widgets.includes('salesSummary')
+        ? `
+                    <article class="stat-item">
+                        <label>Sales Today</label>
+                        <strong id="kpiSalesToday">0</strong>
+                    </article>
+                    <article class="stat-item">
+                        <label>Sales This Month</label>
+                        <strong id="kpiSalesMonth">0</strong>
+                    </article>
+                  `
+        : ''}
+                ${widgets.includes('inventoryAlerts')
+        ? `
+                    <article class="stat-item">
+                        <label>Out of Stock</label>
+                        <strong id="kpiOutOfStock">0</strong>
+                    </article>
+                    <article class="stat-item">
+                        <label>Low Stock</label>
+                        <strong id="kpiLowStock">0</strong>
+                    </article>
+                  `
+        : ''}
+            </div>
+        </section>
+    `;
+
     setRootHtml(`
         <section class="card">
             <h2>Overview</h2>
             <div class="stats-grid">
-                <article class="stat-item">
-                    <label>Total Customers</label>
-                    <strong id="statCustomers">0</strong>
-                </article>
-                <article class="stat-item">
-                    <label>Total Conversations</label>
-                    <strong id="statConversations">0</strong>
-                </article>
-                <article class="stat-item">
-                    <label>Total Leads</label>
-                    <strong id="statLeads">0</strong>
-                </article>
-                <article class="stat-item">
-                    <label>Upcoming Appointments</label>
-                    <strong id="statAppointments">0</strong>
-                </article>
+                ${statsHtml}
             </div>
         </section>
+        ${kpiHtml}
         <section class="chart-grid">
-            <article class="card">
+            <article class="card" ${widgets.includes('messagesChart') ? '' : 'style="display:none;"'}>
                 <h3>Messages Per Day</h3>
                 <canvas id="messagesChart" height="160"></canvas>
             </article>
-            <article class="card">
+            <article class="card" ${widgets.includes('leadsChart') ? '' : 'style="display:none;"'}>
                 <h3>Leads Per Day</h3>
                 <canvas id="leadsChart" height="160"></canvas>
             </article>
@@ -544,11 +838,30 @@ async function renderDashboardModule() {
         const overview = await authedRequest('/api/dashboard/overview');
         const totals = overview.totals || {};
         const charts = overview.charts || {};
+        const extra = overview.extra || {};
 
-        document.getElementById('statCustomers').textContent = totals.customers || 0;
-        document.getElementById('statConversations').textContent = totals.conversations || 0;
-        document.getElementById('statLeads').textContent = totals.leads || 0;
-        document.getElementById('statAppointments').textContent = totals.upcomingAppointments || 0;
+        const customersEl = document.getElementById('statCustomers');
+        const conversationsEl = document.getElementById('statConversations');
+        const leadsEl = document.getElementById('statLeads');
+        const appointmentsEl = document.getElementById('statAppointments');
+
+        if (customersEl) customersEl.textContent = totals.customers || 0;
+        if (conversationsEl) conversationsEl.textContent = totals.conversations || 0;
+        if (leadsEl) leadsEl.textContent = totals.leads || 0;
+        if (appointmentsEl) appointmentsEl.textContent = totals.upcomingAppointments || 0;
+
+        const salesTodayEl = document.getElementById('kpiSalesToday');
+        const salesMonthEl = document.getElementById('kpiSalesMonth');
+        const outOfStockEl = document.getElementById('kpiOutOfStock');
+        const lowStockEl = document.getElementById('kpiLowStock');
+
+        if (salesTodayEl) salesTodayEl.textContent = Number(extra?.sales?.today || 0).toFixed(2);
+        if (salesMonthEl) salesMonthEl.textContent = Number(extra?.sales?.month || 0).toFixed(2);
+        if (outOfStockEl) outOfStockEl.textContent = extra?.inventory?.outOfStock ?? 0;
+        if (lowStockEl) {
+            const threshold = extra?.inventory?.lowStockThreshold ?? 5;
+            lowStockEl.textContent = `${extra?.inventory?.lowStock ?? 0} (≤ ${threshold})`;
+        }
 
         const msgPoints = charts.messagesPerDay || [];
         const leadPoints = charts.leadsPerDay || [];
@@ -556,40 +869,44 @@ async function renderDashboardModule() {
         const messageCtx = document.getElementById('messagesChart');
         const leadCtx = document.getElementById('leadsChart');
 
-        state.charts.messages = new Chart(messageCtx, {
-            type: 'line',
-            data: {
-                labels: msgPoints.map((point) => point.date),
-                datasets: [{
-                    label: 'Messages',
-                    data: msgPoints.map((point) => point.count),
-                    borderColor: '#0f5cd9',
-                    backgroundColor: 'rgba(15, 92, 217, 0.12)',
-                    tension: 0.28,
-                    fill: true
-                }]
-            },
-            options: {
-                plugins: { legend: { display: false } },
-                scales: { x: { ticks: { maxRotation: 0, autoSkip: true } } }
-            }
-        });
+        if (messageCtx) {
+            state.charts.messages = new Chart(messageCtx, {
+                type: 'line',
+                data: {
+                    labels: msgPoints.map((point) => point.date),
+                    datasets: [{
+                        label: 'Messages',
+                        data: msgPoints.map((point) => point.count),
+                        borderColor: '#0f5cd9',
+                        backgroundColor: 'rgba(15, 92, 217, 0.12)',
+                        tension: 0.28,
+                        fill: true
+                    }]
+                },
+                options: {
+                    plugins: { legend: { display: false } },
+                    scales: { x: { ticks: { maxRotation: 0, autoSkip: true } } }
+                }
+            });
+        }
 
-        state.charts.leads = new Chart(leadCtx, {
-            type: 'bar',
-            data: {
-                labels: leadPoints.map((point) => point.date),
-                datasets: [{
-                    label: 'Leads',
-                    data: leadPoints.map((point) => point.count),
-                    backgroundColor: '#138a5a'
-                }]
-            },
-            options: {
-                plugins: { legend: { display: false } },
-                scales: { x: { ticks: { maxRotation: 0, autoSkip: true } } }
-            }
-        });
+        if (leadCtx) {
+            state.charts.leads = new Chart(leadCtx, {
+                type: 'bar',
+                data: {
+                    labels: leadPoints.map((point) => point.date),
+                    datasets: [{
+                        label: 'Leads',
+                        data: leadPoints.map((point) => point.count),
+                        backgroundColor: '#138a5a'
+                    }]
+                },
+                options: {
+                    plugins: { legend: { display: false } },
+                    scales: { x: { ticks: { maxRotation: 0, autoSkip: true } } }
+                }
+            });
+        }
     } catch (error) {
         notifyError(error);
     }
@@ -789,7 +1106,9 @@ async function renderCrudModule(config) {
         fields,
         columns,
         mapRow = (item) => item,
+        rowActions = () => '',
         onRenderFooter = () => '',
+        onRecordsLoaded = null,
         onReady = null
     } = config;
 
@@ -881,6 +1200,9 @@ async function renderCrudModule(config) {
             const data = await authedRequest(endpoint);
             if (!data.length) {
                 table.innerHTML = `<tr><td colspan="${columns.length + 1}"><div class="empty-state">No records found.</div></td></tr>`;
+                if (typeof onRecordsLoaded === 'function') {
+                    await onRecordsLoaded([]);
+                }
                 return;
             }
 
@@ -893,12 +1215,17 @@ async function renderCrudModule(config) {
                         <td>
                             <div class="actions">
                                 <button class="btn btn-secondary" data-edit="${encoded}" type="button">Edit</button>
+                                ${rowActions(item)}
                                 <button class="btn btn-danger" data-delete="${item.id}" type="button">Delete</button>
                             </div>
                         </td>
                     </tr>
                 `;
             }).join('');
+
+            if (typeof onRecordsLoaded === 'function') {
+                await onRecordsLoaded(data.map(mapRow));
+            }
         } catch (error) {
             notifyError(error);
         }
@@ -1016,7 +1343,39 @@ async function renderOffersModule() {
             { key: 'discount', label: 'Discount (%)' },
             { key: 'valid_until', label: 'Expires On' },
             { key: 'is_active', label: 'Status', render: (row) => row.is_active ? 'Active' : 'Inactive' }
-        ]
+        ],
+        rowActions: (item) => {
+            if (!item?.id || item?.is_active === false) return '';
+            return `<button class="btn" data-publish-offer="${escapeHtml(item.id)}" type="button">Publish</button>`;
+        },
+        onReady: async ({ loadRecords }) => {
+            const table = document.getElementById('recordsTable');
+            if (!table) return;
+
+            table.addEventListener('click', async (event) => {
+                const publishBtn = event.target.closest('[data-publish-offer]');
+                if (!publishBtn) return;
+
+                const offerId = publishBtn.dataset.publishOffer;
+                const confirmed = window.confirm('Publish this offer to Facebook and Instagram now?');
+                if (!confirmed) return;
+
+                const originalText = publishBtn.textContent;
+                publishBtn.disabled = true;
+                publishBtn.textContent = 'Publishing...';
+
+                try {
+                    await authedRequest(`/api/offers/${offerId}/publish`, { method: 'POST' });
+                    notifySuccess('Offer queued for publishing. It should post in a few seconds.');
+                    await loadRecords();
+                } catch (error) {
+                    notifyError(error);
+                } finally {
+                    publishBtn.disabled = false;
+                    publishBtn.textContent = originalText;
+                }
+            });
+        }
     });
 }
 
@@ -1837,9 +2196,10 @@ async function renderProductsModule() {
         endpoint: '/api/products',
         fields: [
             { id: 'productName', key: 'product_name', label: 'Product Name' },
+            { id: 'productBrand', key: 'brand_name', label: 'Brand Name' },
             { id: 'productCategory', key: 'category', label: 'Category' },
             { id: 'productPrice', key: 'price', label: 'Price', type: 'number' },
-            { id: 'productStock', key: 'stock_quantity', label: 'Stock Qty', type: 'number' },
+            { id: 'productStock', key: 'stock_quantity', label: 'No of Pcs', type: 'number' },
             { id: 'productDescription', key: 'description', label: 'Description', type: 'textarea', wide: true },
             {
                 id: 'productActive',
@@ -1856,12 +2216,32 @@ async function renderProductsModule() {
         ],
         columns: [
             { key: 'product_name', label: 'Product' },
+            { key: 'brand_name', label: 'Brand' },
             { key: 'category', label: 'Category' },
             { key: 'price', label: 'Price' },
-            { key: 'stock_quantity', label: 'Stock Qty' },
+            { key: 'stock_quantity', label: 'Pcs' },
+            { key: 'updated_at', label: 'Updated', render: (row) => formatDate(row.updated_at || row.created_at) },
             { key: 'is_active', label: 'Status', render: (row) => row.is_active ? 'Active' : 'Inactive' }
         ],
         onRenderFooter: () => `
+            <section class="card stack" style="margin-top:16px;">
+                <h3 style="margin:0;">Products to be ordered</h3>
+                <p class="muted">Automatically lists items with 0 pcs in stock.</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Brand</th>
+                                <th>Category</th>
+                                <th>Pcs</th>
+                                <th>Updated</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productsToOrderTable"></tbody>
+                    </table>
+                </div>
+            </section>
             <section class="import-panel">
                 <h3>Import Product Data</h3>
                 <p class="muted">Upload Excel, CSV, or text data and keep editing products after import.</p>
@@ -1876,6 +2256,33 @@ async function renderProductsModule() {
                 <div id="productImportStatus" class="muted"></div>
             </section>
         `,
+        onRecordsLoaded: async (records) => {
+            const table = document.getElementById('productsToOrderTable');
+            if (!table) return;
+
+            const outOfStock = (records || [])
+                .filter((item) => Number(item.stock_quantity || 0) <= 0)
+                .sort((a, b) => {
+                    const aTime = new Date(a.updated_at || a.created_at || 0).getTime();
+                    const bTime = new Date(b.updated_at || b.created_at || 0).getTime();
+                    return bTime - aTime;
+                });
+
+            if (outOfStock.length === 0) {
+                table.innerHTML = `<tr><td colspan="5"><div class="empty-state">No products pending order.</div></td></tr>`;
+                return;
+            }
+
+            table.innerHTML = outOfStock.map((row) => `
+                <tr>
+                    <td>${escapeHtml(row.product_name || '-')}</td>
+                    <td>${escapeHtml(row.brand_name || '-')}</td>
+                    <td>${escapeHtml(row.category || '-')}</td>
+                    <td>${escapeHtml(String(row.stock_quantity ?? 0))}</td>
+                    <td>${escapeHtml(formatDate(row.updated_at || row.created_at))}</td>
+                </tr>
+            `).join('');
+        },
         onReady: async ({ loadRecords }) => {
             const fileInput = document.getElementById('productImportFile');
             const textInput = document.getElementById('productImportText');
@@ -2185,7 +2592,7 @@ async function renderBillingModule() {
         }
 
         list.innerHTML = results.map((item) => `
-            <button type="button" class="billing-suggestion" data-row-id="${rowId}" data-name="${escapeAttribute(item.name)}" data-price="${escapeAttribute(item.price)}">
+            <button type="button" class="billing-suggestion" data-row-id="${rowId}" data-name="${escapeAttribute(item.name)}" data-price="${escapeAttribute(item.price)}" data-ref-type="${escapeAttribute(item.type || '')}" data-ref-id="${escapeAttribute(item.id || '')}" data-stock="${escapeAttribute(item.stock_quantity ?? '')}">
                 <span>${escapeHtml(item.name)}</span>
                 <span>${escapeHtml(Number(item.price || 0).toFixed(2))}</span>
             </button>
@@ -2193,12 +2600,18 @@ async function renderBillingModule() {
         list.style.display = 'block';
     }
 
-    function applySuggestion(rowId, name, price) {
+    function applySuggestion(rowId, name, price, refType = '', refId = '', stockQuantity = null) {
         const item = stateBilling.items.find((row) => row.id === rowId);
         if (!item) return;
         item.name = name;
         item.price = Number(price || 0);
         item.quantity = item.quantity || 1;
+        item.ref_type = refType || null;
+        item.ref_id = refId || null;
+        item.max_stock = refType === 'product' && stockQuantity !== null && stockQuantity !== '' ? Number(stockQuantity) : null;
+        if (item.max_stock !== null && Number(item.quantity || 1) > item.max_stock) {
+            item.quantity = Math.max(1, item.max_stock);
+        }
         renderItems();
     }
 
@@ -2218,7 +2631,7 @@ async function renderBillingModule() {
                         <div class="billing-suggestions"></div>
                     </div>
                 </td>
-                <td class="billing-col-qty"><input data-bill-qty="${item.id}" type="number" min="1" step="1" inputmode="numeric" value="${escapeAttribute(item.quantity)}"></td>
+                <td class="billing-col-qty"><input data-bill-qty="${item.id}" type="number" min="1" ${item.ref_type === 'product' && Number.isFinite(item.max_stock) && item.max_stock !== null ? `max="${escapeAttribute(item.max_stock)}"` : ''} step="1" inputmode="numeric" value="${escapeAttribute(item.quantity)}"></td>
                 <td class="billing-col-price"><input data-bill-price="${item.id}" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeAttribute(item.price)}"></td>
                 <td class="billing-col-total" data-bill-line-total="${item.id}">${((Number(item.quantity) || 0) * (Number(item.price) || 0)).toFixed(2)}</td>
                 <td class="billing-col-action"><button class="btn btn-danger" data-bill-remove="${item.id}" type="button">Remove</button></td>
@@ -2233,7 +2646,10 @@ async function renderBillingModule() {
             id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
             name: data.name || '',
             quantity: data.quantity || 1,
-            price: data.price || 0
+            price: data.price || 0,
+            ref_type: data.ref_type || null,
+            ref_id: data.ref_id || null,
+            max_stock: data.max_stock ?? null
         });
         renderItems();
     }
@@ -2328,13 +2744,27 @@ async function renderBillingModule() {
         try {
             const isEditing = Boolean(stateBilling.activeBillId);
             const totals = computeTotals();
+
+            const stockIssue = (stateBilling.items || []).find((item) =>
+                item.ref_type === 'product' &&
+                Number.isFinite(item.max_stock) &&
+                item.max_stock !== null &&
+                (Number(item.quantity || 1) > Number(item.max_stock))
+            );
+            if (stockIssue) {
+                notifyError(new Error(`Only ${stockIssue.max_stock} pcs available for "${stockIssue.name}".`));
+                return null;
+            }
+
             const payload = {
                 customerName: document.getElementById('billCustomerName').value.trim(),
                 mobileNumber: document.getElementById('billMobileNumber').value.trim(),
                 items: stateBilling.items.map((item) => ({
                     name: item.name,
                     quantity: Number(item.quantity) || 1,
-                    price: Number(item.price) || 0
+                    price: Number(item.price) || 0,
+                    item_type: item.ref_type || undefined,
+                    ref_id: item.ref_id || undefined
                 })),
                 gstPercent: totals.gstPercent,
                 discountPercent: totals.discountPercent,
@@ -2360,20 +2790,22 @@ async function renderBillingModule() {
     function printReceipt() {
         const layout = getPrintLayoutConfig();
         const pageSize = layout.key === 'a4' ? 'A4' : layout.key === 'a5' ? 'A5' : `${layout.widthMm}mm auto`;
+        const rootVars = `--receipt-width-mm:${layout.widthMm}mm;--receipt-content-width-mm:${layout.contentWidthMm}mm;--receipt-letterhead-max-mm:${layout.letterheadMaxMm}mm;`;
         const html = `
 <!doctype html>
 <html><head><title>Print Bill</title>
 <style>
 @page { size: ${pageSize}; margin: 10mm; }
-html,body{margin:0;padding:0;font-family:Arial,sans-serif;}
-body{width:${layout.widthMm}mm;}
-.receipt{width:${layout.contentWidthMm}mm;padding:0;box-sizing:border-box;margin:0 auto;}
-.receipt img{max-width:28mm;max-height:${layout.letterheadMaxMm}mm;display:block;margin:0 0 2mm;object-fit:contain;}
-.receipt h4,.receipt p{margin:0 0 1.5mm;text-align:center;font-size:11px;}
-.rule{border-top:1px dashed #666;margin:2mm 0;}
-.row{display:flex;justify-content:space-between;font-size:10px;margin:0 0 1.5mm;}
-.item-title{font-size:10px;margin:0 0 1mm;}
-</style></head><body>${preview.innerHTML.replace('receipt-inner', 'receipt').replace(/receipt-rule/g, 'rule').replace(/receipt-row/g, 'row').replace(/receipt-item-meta/g, 'row').replace(/receipt-item/g, '')}<script>window.print();</script></body></html>`;
+html,body{margin:0;padding:0;}
+body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+/* Use the same receipt markup/styles as the on-screen preview */
+.bill-receipt{${rootVars}}
+@media print{
+  .bill-receipt{border:none;box-shadow:none;}
+}
+</style>
+<link rel="stylesheet" href="${window.location.origin}/css/dashboard.css">
+</head><body>${preview.outerHTML}<script>window.print();</script></body></html>`;
         const popup = window.open('', 'print_bill', 'width=420,height=760');
         if (!popup) {
             notifyError(new Error('Popup blocked. Please allow popups to print.'));
@@ -2392,6 +2824,8 @@ body{width:${layout.widthMm}mm;}
             const item = stateBilling.items.find((row) => row.id === nameInput.dataset.billName);
             if (!item) return;
             item.name = nameInput.value;
+            item.ref_type = null;
+            item.ref_id = null;
             renderReceipt();
             await buildSuggestions(nameInput, item.id);
             return;
@@ -2400,7 +2834,13 @@ body{width:${layout.widthMm}mm;}
         if (qtyInput) {
             const item = stateBilling.items.find((row) => row.id === qtyInput.dataset.billQty);
             if (!item) return;
-            const parsedValue = Math.max(1, parseInt(qtyInput.value || '1', 10) || 1);
+            let parsedValue = Math.max(1, parseInt(qtyInput.value || '1', 10) || 1);
+            if (item.ref_type === 'product' && Number.isFinite(item.max_stock) && item.max_stock !== null) {
+                parsedValue = Math.min(parsedValue, Math.max(1, item.max_stock));
+                if (String(parsedValue) !== String(qtyInput.value || '')) {
+                    qtyInput.value = String(parsedValue);
+                }
+            }
             item.quantity = parsedValue;
             updateBillRowAmount(item.id);
             computeTotals();
@@ -2428,7 +2868,14 @@ body{width:${layout.widthMm}mm;}
             return;
         }
         if (suggestionBtn) {
-            applySuggestion(suggestionBtn.dataset.rowId, suggestionBtn.dataset.name, suggestionBtn.dataset.price);
+            applySuggestion(
+                suggestionBtn.dataset.rowId,
+                suggestionBtn.dataset.name,
+                suggestionBtn.dataset.price,
+                suggestionBtn.dataset.refType,
+                suggestionBtn.dataset.refId,
+                suggestionBtn.dataset.stock
+            );
         }
     });
 
@@ -2458,7 +2905,14 @@ body{width:${layout.widthMm}mm;}
         if (event.key === 'Enter' && currentIndex >= 0) {
             event.preventDefault();
             const selected = suggestions[currentIndex];
-            applySuggestion(selected.dataset.rowId, selected.dataset.name, selected.dataset.price);
+            applySuggestion(
+                selected.dataset.rowId,
+                selected.dataset.name,
+                selected.dataset.price,
+                selected.dataset.refType,
+                selected.dataset.refId,
+                selected.dataset.stock
+            );
         }
     });
 

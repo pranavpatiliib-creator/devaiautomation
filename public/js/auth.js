@@ -10,13 +10,11 @@ function decodeJwtPayload(token) {
         return null;
     }
 }
-
 function setFeedback(element, message, type = 'error') {
     if (!element) return;
     element.className = `form-feedback ${type}`;
     element.textContent = message || '';
 }
-
 function getAuthMessageElement() {
     const existing = document.getElementById('authMessage');
     if (existing) return existing;

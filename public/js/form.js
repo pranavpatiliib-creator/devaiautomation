@@ -5,7 +5,6 @@ function showSubmitMessage(message, type = "info") {
     messageEl.textContent = message;
     messageEl.className = `submit-message ${type}`;
 }
-
 async function submitLead() {
     const urlParams = new URLSearchParams(window.location.search);
     const userId = urlParams.get("user");
@@ -64,7 +63,7 @@ async function submitLead() {
         showSubmitMessage("Lead submitted successfully. Thank you!", "success");
         nameInput.value = "";
         phoneInput.value = "";
-        serviceInput.value = "";
+        serviceInput.value ="";
     } catch (error) {
         console.error("Lead submit request error:", error);
         showSubmitMessage("Network error. Please try again.", "error");

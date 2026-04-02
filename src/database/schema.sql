@@ -1,6 +1,6 @@
--- =====================================================
+-- ========================================================================================================================================================================
 -- Let's create a comprehensive database schema for our SaaS platform that includes all the necessary tables and relationships to support the features we've discussed.
---=====================================================
+--========================================================================================================================================================================
 
 create extension if not exists "uuid-ossp";
 
@@ -90,9 +90,9 @@ create table if not exists conversations (
 
 create index if not exists conversations_customer_idx on conversations(customer_id);
 
--------------------------------------------------------
--- SERVICES
--------------------------------------------------------
+----------------------------------------------------------------------------------
+-- SERVICES-----------------------------------------------------------------------
+----------------------------------------------------------------------------------
 
 create table if not exists services (
  id uuid primary key default uuid_generate_v4(),
@@ -106,9 +106,9 @@ create table if not exists services (
 
 create index if not exists services_tenant_idx on services(tenant_id);
 
--------------------------------------------------------
--- OFFERS
--------------------------------------------------------
+------------------------------------------------------
+-------------------OFFERS ----------------------------
+------------------------------------------------------
 
 create table if not exists offers (
  id uuid primary key default uuid_generate_v4(),
@@ -124,25 +124,29 @@ create table if not exists offers (
 create index if not exists offers_tenant_idx on offers(tenant_id);
 
 -------------------------------------------------------
--- PRODUCTS
+-- PRODUCTS--------------------------------------------
 -------------------------------------------------------
 
 create table if not exists products (
  id uuid primary key default uuid_generate_v4(),
  tenant_id uuid references tenants(id) on delete cascade,
  product_name text not null,
+ brand_name text,
  category text,
  description text,
  price numeric,
  stock_quantity int default 0,
  is_active boolean default true,
- created_at timestamptz default now()
+ created_at timestamptz default now(),
+ updated_at timestamptz default now()
 );
 
 create index if not exists products_tenant_idx on products(tenant_id);
+alter table products add column if not exists brand_name text;
+alter table products add column if not exists updated_at timestamptz default now();
 
 -------------------------------------------------------
--- BILLS
+----------BILLS----------------------------------------
 -------------------------------------------------------
 
 create table if not exists bills (
@@ -169,9 +173,9 @@ alter table bills add column if not exists gst_percent numeric default 0;
 alter table bills add column if not exists discount_percent numeric default 0;
 alter table bills add column if not exists receipt_width_mm numeric default 80;
 
--------------------------------------------------------
--- MENU OPTIONS (Dashboard Configurable)
--------------------------------------------------------
+------------------------------------------------------
+-- MENU OPTIONS (Dashboard Configurable)--------------
+------------------------------------------------------
 
 create table if not exists menu_options (
  id uuid primary key default uuid_generate_v4(),
@@ -185,7 +189,7 @@ create table if not exists menu_options (
 create index if not exists menu_tenant_idx on menu_options(tenant_id);
 
 -------------------------------------------------------
--- LEADS
+-- LEADS----------------------------------------------
 -------------------------------------------------------
 
 create table if not exists leads (
@@ -201,11 +205,9 @@ create table if not exists leads (
 );
 
 create index if not exists leads_tenant_idx on leads(tenant_id);
-
 -------------------------------------------------------
 -- APPOINTMENTS
 -------------------------------------------------------
-
 create table if not exists appointments (
  id uuid primary key default uuid_generate_v4(),
  tenant_id uuid references tenants(id) on delete cascade,
@@ -220,11 +222,9 @@ create table if not exists appointments (
 );
 
 create index if not exists appointments_tenant_idx on appointments(tenant_id);
-
 -------------------------------------------------------
 -- AUTOMATION RULES
 -------------------------------------------------------
-
 create table if not exists automation_rules (
  id uuid primary key default uuid_generate_v4(),
  tenant_id uuid references tenants(id),
@@ -274,9 +274,9 @@ create table if not exists ai_responses (
  created_at timestamptz default now()
 );
 
--------------------------------------------------------
--- AI USAGE
--------------------------------------------------------
+--------------------------------------------------------------------
+-- AI USAGE---------------------------------------------------------
+--------------------------------------------------------------------
 
 create table if not exists ai_usage (
  id uuid primary key default uuid_generate_v4(),
@@ -325,6 +325,9 @@ create index if not exists social_posts_tenant_idx on social_posts(tenant_id);
 create index if not exists social_posts_status_idx on social_posts(status);
 create index if not exists social_posts_scheduled_idx on social_posts(scheduled_at);
 
+
+
+
 create table if not exists social_post_attempts (
  id uuid primary key default uuid_generate_v4(),
  tenant_id uuid references tenants(id) on delete cascade,
@@ -361,6 +364,7 @@ create table if not exists auto_reply_jobs (
  incoming_message_id text,
  incoming_message text,
  reply_text text,
+ conversation_state text,
  run_at timestamptz not null,
  status text default 'pending',
  attempts int default 0,
@@ -375,9 +379,10 @@ create table if not exists auto_reply_jobs (
 create index if not exists auto_reply_jobs_tenant_idx on auto_reply_jobs(tenant_id);
 create index if not exists auto_reply_jobs_run_idx on auto_reply_jobs(run_at);
 create index if not exists auto_reply_jobs_status_idx on auto_reply_jobs(status);
+alter table auto_reply_jobs add column if not exists conversation_state text;
 
 -----------------------------------------------------------------------------------------------------------------------------
--- PRIVILEGES
+-- PRIVILEGESZ
 ------------------------------------------------------------------------------------------------------
 
 grant usage on schema public to anon, authenticated, service_role;

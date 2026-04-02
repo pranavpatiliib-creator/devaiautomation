@@ -1,6 +1,6 @@
 const supabase = require('../config/supabase');
 const logger = require('../utils/appLogger');
-const { sendMetaTextMessage } = require('./metaChannelService');
+const { sendMetaTextMessage, sendWhatsAppTextMessage } = require('./metaChannelService');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
@@ -14,6 +14,151 @@ function computeBackoffSeconds(attempt) {
 // Utility function to safely convert values to strings for logging or storage.
 function normalizeText(value) {
     return String(value || '').trim().toLowerCase();
+}
+
+async function getTenantIndustry(tenantId) {
+    const { data, error } = await supabase
+        .from('tenants')
+        .select('industry,business_name')
+        .eq('id', tenantId)
+        .maybeSingle();
+
+    if (error) {
+        if (error.code === 'PGRST205') return { industry: '', business_name: '' };
+        throw error;
+    }
+
+    return {
+        industry: String(data?.industry || '').trim(),
+        business_name: String(data?.business_name || '').trim()
+    };
+}
+
+function normalizeProfessionKey(value) {
+    const text = String(value || '').trim().toLowerCase();
+    if (!text) return 'default';
+    if (text.includes('hotel') || text.includes('resort') || text.includes('lodge')) return 'hotel';
+    if (text.includes('restaurant') || text.includes('cafe') || text.includes('food') || text.includes('bakery')) return 'restaurant';
+    return 'default';
+}
+
+function looksLikeTableBookingRequest(text) {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return (
+        t.includes('book') ||
+        t.includes('booking') ||
+        t.includes('reserve') ||
+        t.includes('reservation') ||
+        t.includes('table') ||
+        t.includes('dinner') ||
+        t.includes('lunch') ||
+        t.includes('breakfast')
+    );
+}
+
+function buildHotelTableBookingReply({ businessName }) {
+    const nameLine = businessName ? `Thank you for contacting ${businessName}.` : 'Thank you for reaching out.';
+    return [
+        `${nameLine} We’d be happy to help with your table booking.`,
+        '',
+        'To confirm your reservation, please share:',
+        '1) Table number',
+        '2) Date',
+        '3) Time',
+        '4) Number of guests',
+        '5) Your name',
+        '',
+        'Once we have these details, we’ll confirm availability right away.'
+    ].join('\n');
+}
+
+function parseFirstInt(value) {
+    const match = String(value || '').match(/(\d{1,6})/);
+    return match ? Number(match[1]) : null;
+}
+
+function parseTableNumber(text) {
+    const match = String(text || '').match(/table\s*(?:no\.?|number|#)?\s*[:\-]?\s*(\d{1,4})/i);
+    if (match) return Number(match[1]);
+    return null;
+}
+
+function parseGuests(text) {
+    const match = String(text || '').match(/(?:guest|guests|people|persons|pax)\s*[:\-]?\s*(\d{1,3})/i);
+    if (match) return Number(match[1]);
+    return null;
+}
+
+function parseDateIso(text) {
+    const t = String(text || '');
+    const iso = t.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+    const dmy = t.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](20\d{2}|\d{2})\b/);
+    if (dmy) {
+        const dd = String(dmy[1]).padStart(2, '0');
+        const mm = String(dmy[2]).padStart(2, '0');
+        const yy = dmy[3].length === 2 ? `20${dmy[3]}` : dmy[3];
+        return `${yy}-${mm}-${dd}`;
+    }
+
+    return null;
+}
+
+function parseTimeText(text) {
+    const t = String(text || '');
+    const match = t.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
+    if (!match) return null;
+    const hh = String(match[1]).padStart(2, '0');
+    const mm = String(match[2] || '00').padStart(2, '0');
+    const ampm = match[3] ? match[3].toUpperCase() : '';
+    return `${hh}:${mm}${ampm ? ` ${ampm}` : ''}`.trim();
+}
+
+async function getLastConversationState({ tenantId, channel, senderId }) {
+    if (!tenantId || !channel || !senderId) return null;
+
+    const { data, error } = await supabase
+        .from('conversations')
+        .select('state,direction,created_at')
+        .eq('tenant_id', tenantId)
+        .eq('channel', channel)
+        .eq('sender_id', senderId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        if (error.code === 'PGRST205') return null;
+        throw error;
+    }
+
+    return data?.state || null;
+}
+
+async function createTableBookingAppointment({ tenantId, customerId, dateIso, timeText, notes }) {
+    const { data, error } = await supabase
+        .from('appointments')
+        .insert({
+            tenant_id: tenantId,
+            customer_id: customerId || null,
+            service_id: null,
+            appointment_date: dateIso || null,
+            appointment_time: timeText || null,
+            status: 'scheduled',
+            booking_source: 'whatsapp',
+            notes: notes || null
+        })
+        .select('id,appointment_date,appointment_time,status,notes,created_at')
+        .single();
+
+    if (error) {
+        if (error.code === 'PGRST205') return null;
+        throw error;
+    }
+
+    return data || null;
 }
 // Get current auto-reply settings for a tenant. If no settings exist, defaults will be returned.
 async function getSettings(tenantId) {
@@ -306,7 +451,67 @@ async function enqueueAutoReplyJob({
     const delaySeconds = Math.max(0, Number(settings.delay_seconds || 0));
     const runAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
 
-    const replyText = settings.ai_enabled ? await generateAiReply(tenantId, incomingMessage, senderId) : null;
+    let replyText = null;
+    const tenant = await getTenantIndustry(tenantId);
+    const professionKey = normalizeProfessionKey(tenant.industry);
+
+    let conversationState = null;
+    const lastState = await getLastConversationState({ tenantId, channel, senderId });
+
+    if (professionKey === 'hotel' && lastState === 'awaiting_table_booking_details') {
+        const tableNumber = parseTableNumber(incomingMessage) ?? parseFirstInt(incomingMessage);
+        const dateIso = parseDateIso(incomingMessage);
+        const timeText = parseTimeText(incomingMessage);
+        const guests = parseGuests(incomingMessage);
+
+        if (!tableNumber) {
+            replyText = 'Sure — please share the *table number* to proceed with the reservation.';
+            conversationState = 'awaiting_table_booking_details';
+        } else if (!dateIso || !timeText || !guests) {
+            const missing = [];
+            if (!dateIso) missing.push('date');
+            if (!timeText) missing.push('time');
+            if (!guests) missing.push('number of guests');
+            replyText = [
+                `Thank you. Table number noted: ${tableNumber}.`,
+                `Please share the ${missing.join(', ')} to confirm your booking.`,
+                '',
+                'Example: 2026-04-01, 8:30 PM, 4 guests'
+            ].join('\n');
+            conversationState = 'awaiting_table_booking_details';
+        } else {
+            const notes = [
+                `Table: ${tableNumber}`,
+                `Guests: ${guests}`,
+                `Customer message: ${String(incomingMessage || '').trim().slice(0, 800)}`
+            ].join(' | ');
+
+            await createTableBookingAppointment({
+                tenantId,
+                customerId,
+                dateIso,
+                timeText,
+                notes
+            });
+
+            replyText = [
+                'Thank you — your table booking request has been created.',
+                `Table: ${tableNumber}`,
+                `Date: ${dateIso}`,
+                `Time: ${timeText}`,
+                `Guests: ${guests}`,
+                '',
+                'We will confirm availability shortly.'
+            ].join('\n');
+            conversationState = 'table_booking_created';
+        }
+    } else if (professionKey === 'hotel' && looksLikeTableBookingRequest(incomingMessage)) {
+        replyText = buildHotelTableBookingReply({ businessName: tenant.business_name });
+        conversationState = 'awaiting_table_booking_details';
+    } else {
+        replyText = settings.ai_enabled ? await generateAiReply(tenantId, incomingMessage, senderId) : null;
+        conversationState = null;
+    }
     if (!replyText) return { enqueued: false, reason: 'no_reply' };
 
     const { error } = await supabase.from('auto_reply_jobs').upsert(
@@ -319,6 +524,7 @@ async function enqueueAutoReplyJob({
             incoming_message_id: incomingMessageId || null,
             incoming_message: incomingMessage || null,
             reply_text: replyText,
+            conversation_state: conversationState,
             run_at: runAt,
             status: 'pending',
             updated_at: new Date().toISOString()
@@ -345,6 +551,14 @@ async function dispatchReply(job) {
         return sendMetaTextMessage({
             tenantId: job.tenant_id,
             channel,
+            recipientId: job.sender_id,
+            text: job.reply_text
+        });
+    }
+
+    if (channel === 'whatsapp') {
+        return sendWhatsAppTextMessage({
+            tenantId: job.tenant_id,
             recipientId: job.sender_id,
             text: job.reply_text
         });
@@ -396,7 +610,7 @@ async function processDueAutoReplies({ limit = 10 } = {}) {
                 message: job.reply_text,
                 direction: 'outgoing',
                 intent: 'auto_reply',
-                state: 'auto_reply',
+                state: job.conversation_state || 'auto_reply',
                 message_id: result.external_id || null
             });
             if (convError && convError.code !== 'PGRST205') throw convError;

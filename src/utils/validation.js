@@ -29,6 +29,7 @@ function asBoolean(value, fallback = false) {
     return Boolean(value);
 }
 // Utility function to check for required fields in a request body. It returns an array of missing field names, which can be used to generate error messages for API responses.
+
 function requireFields(body, fields = []) {
     const missing = [];
     for (const field of fields) {

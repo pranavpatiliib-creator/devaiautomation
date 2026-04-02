@@ -71,7 +71,7 @@ class LeadsController {
             res.status(500).json({ error: 'Server error' });
         }
     }
-    static async exportLeadsPDF(req, res) {
+   static async exportLeadsPDF(req, res) {
         try {
 
             const { status, fromDate, toDate } = req.query;
@@ -167,6 +167,4 @@ class LeadsController {
         }
     }
 }
-
-
 module.exports = LeadsController;

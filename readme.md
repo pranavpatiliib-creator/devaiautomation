@@ -170,6 +170,12 @@ messages: conversation_id → messages[]
 
 **Storage**: `channel_connections` (tokens encrypted via `secretCrypto.js`)
 
+**Offer auto-publish**:
+- In Dashboard → Offers, use the `Publish` button to queue a post to both Facebook + Instagram.
+- For Facebook Page posting, the connected user must have sufficient Page permissions and the app must request `pages_read_engagement` + `pages_manage_posts`.
+- For Instagram publishing, request `instagram_content_publish` and connect a Professional (Business/Creator) Instagram account linked to a Facebook Page.
+- Instagram publishing requires a publicly reachable image URL. Set `PUBLIC_BASE_URL` (example: `http://localhost:5000` locally, `https://yourdomain.com` in production).
+
 ---
 
 ### **7. AI Reply Automation**
