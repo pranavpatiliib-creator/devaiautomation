@@ -45,7 +45,7 @@ function isStrongPassword(password) {
 function getUserId() {
     const token = localStorage.getItem('token');
     const payload = decodeJwtPayload(token);
-    return payload?.id || null;
+    return payload?.sub || payload?.id || null;
 }
 
 async function logout() {
@@ -54,7 +54,6 @@ async function logout() {
     } catch (error) {
         console.error('Logout request failed:', error);
     } finally {
-        localStorage.removeItem('token');
         localStorage.removeItem('tenantId');
         localStorage.removeItem('businessName');
         localStorage.removeItem('name');
@@ -153,7 +152,6 @@ async function login() {
         setFeedback(feedback, '', 'info');
         const data = await API.login(email, password);
 
-        localStorage.setItem('token', data.token);
         localStorage.setItem('tenantId', data.tenantId || '');
         localStorage.setItem('businessName', data.businessName || '');
         localStorage.setItem('name', data.name || '');
@@ -183,11 +181,6 @@ async function forgotPassword() {
     try {
         const data = await API.forgotPassword(email);
         setFeedback(message, data.message || 'Reset link generated.', 'success');
-
-        if (resetLinkBox && data.resetLink) {
-            resetLinkBox.style.display = 'block';
-            resetLinkBox.innerHTML = `<a href=\"${data.resetLink}\">Click here to reset password</a>`;
-        }
     } catch (error) {
         setFeedback(message, error.message || 'Could not connect to server.', 'error');
     }
@@ -197,10 +190,12 @@ async function resetPassword() {
     const newPassword = document.getElementById('newPassword').value;
     const confirmPassword = document.getElementById('confirmPassword').value;
     const message = document.getElementById('message');
-    const token = new URLSearchParams(window.location.search).get('token');
+    const queryToken = new URLSearchParams(window.location.search).get('token');
+    const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+    const accessToken = hashParams.get('access_token') || queryToken;
 
-    if (!token) {
-        setFeedback(message, 'Invalid reset link.', 'error');
+    if (!accessToken) {
+        setFeedback(message, 'Invalid or expired reset link.', 'error');
         return;
     }
 
@@ -220,7 +215,7 @@ async function resetPassword() {
     }
 
     try {
-        const data = await API.resetPassword(token, newPassword);
+        const data = await API.resetPassword(accessToken, newPassword);
         setFeedback(message, data.message || 'Password reset successful.', 'success');
         setTimeout(() => {
             window.location.href = '/login';

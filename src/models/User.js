@@ -22,7 +22,7 @@ function mapUserRow(row) {
 }
 
 function mapUserInsert(userData) {
-    return {
+    const row = {
         name: userData.name,
         email: String(userData.email || '').trim().toLowerCase(),
         password: userData.password,
@@ -33,6 +33,12 @@ function mapUserInsert(userData) {
         services: userData.services || null,
         website: userData.website || null
     };
+
+    if (userData.id) {
+        row.id = userData.id;
+    }
+
+    return row;
 }
 
 function mapUserUpdates(updates) {

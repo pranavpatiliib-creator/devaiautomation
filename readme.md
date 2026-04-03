@@ -26,6 +26,10 @@ server.js (300 LOC) → Main app
 - Caches authenticated `GET` JSON responses per-tenant with TTL (`REDIS_CACHE_TTL_SECONDS`, default 30s)
 - Automatically busts the tenant cache version after successful `POST/PUT/PATCH/DELETE`
 
+### Security Notes
+- Auth uses Supabase Auth access tokens stored in an `httpOnly` cookie (`auth_token`); the frontend no longer stores tokens in `localStorage`.
+- Basic CSRF hardening is enabled for cookie-authenticated unsafe requests (Origin/Referer must match host).
+
 ### Database: Supabase PostgreSQL (Full Schema Below)
 - **Multi-tenant**: `tenants.id` FK on ALL business data
 - **RLS-ready**: Service role key bypasses client policies

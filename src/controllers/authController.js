@@ -1,8 +1,8 @@
-const jwt = require('jsonwebtoken');
-
 const User = require('../models/User');
-const { SECRET } = require('../middleware/auth');
 const { getOrCreateTenantForUser } = require('../services/tenantService');
+const supabase = require('../config/supabase');
+const supabasePublic = require('../config/supabasePublic');
+const { createClient } = require('@supabase/supabase-js');
 // Utility function to normalize email addresses by trimming whitespace and converting to lowercase, ensuring consistent handling of email inputs across the application.
 function normalizeEmail(email) {
     return String(email || '').trim().toLowerCase();
@@ -12,26 +12,6 @@ function isStrongPassword(password) {
     const pattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
     return pattern.test(String(password || ''));
 }
-// Generates a JWT token for password reset with a short expiration time, embedding the user's email and a specific purpose claim to ensure it's only used for password resets.
-function createResetToken(email) {
-    return jwt.sign(
-        {
-            purpose: 'password_reset',
-            email: normalizeEmail(email)
-        },
-        SECRET,
-        { expiresIn: '15m' }
-    );
-}
-// Parses and verifies a password reset token, ensuring it has the correct purpose and contains an email. If the token is invalid or expired, it throws an error.
-function parseResetToken(token) {
-    const decoded = jwt.verify(token, SECRET);
-    if (!decoded || decoded.purpose !== 'password_reset' || !decoded.email) {
-        throw new Error('Invalid reset token');
-    }
-    return decoded;
-}
-
 function getAuthCookieOptions(req) {
     const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
     const isSecure = req.secure || forwardedProto === 'https';
@@ -93,24 +73,49 @@ class AuthController {
                 });
             }
 
-            const existingUser = await User.findByEmail(normalizedEmail);
-            if (existingUser) {
-                return res.status(400).json({ error: 'User already exists' });
+            const { data: signUpData, error: signUpError } = await supabasePublic.auth.signUp({
+                email: normalizedEmail,
+                password,
+                options: {
+                    data: {
+                        name,
+                        profession,
+                        businessName,
+                        businessPhone,
+                        location,
+                        services,
+                        website
+                    }
+                }
+            });
+
+            if (signUpError) {
+                const message = signUpError.message || 'Signup failed';
+                const status = /already|exists/i.test(message) ? 400 : 500;
+                return res.status(status).json({ error: message });
             }
 
-            const hashedPassword = User.hashPassword(password);
+            const authUser = signUpData?.user;
+            if (!authUser?.id) {
+                return res.status(500).json({ error: 'Signup failed (missing Supabase user)' });
+            }
 
-            const newUser = await User.create({
-                name,
-                email: normalizedEmail,
-                password: hashedPassword,
-                profession,
-                businessName,
-                businessPhone,
-                location,
-                services,
-                website
-            });
+            // Create/ensure profile row in app users table (no password stored).
+            let newUser = await User.findById(authUser.id);
+            if (!newUser) {
+                newUser = await User.create({
+                    id: authUser.id,
+                    name,
+                    email: normalizedEmail,
+                    password: null,
+                    profession,
+                    businessName,
+                    businessPhone,
+                    location,
+                    services,
+                    website
+                });
+            }
 
             const tenant = await getOrCreateTenantForUser(newUser, {
                 business_name: businessName,
@@ -137,14 +142,33 @@ class AuthController {
                 return res.status(400).json({ error: 'Email and password are required' });
             }
 
-            const user = await User.findByEmail(normalizedEmail);
-            if (!user) {
-                return res.status(401).json({ error: 'Invalid email or password' });
+            const { data: signInData, error: signInError } = await supabasePublic.auth.signInWithPassword({
+                email: normalizedEmail,
+                password
+            });
+
+            if (signInError || !signInData?.session?.access_token || !signInData?.user?.id) {
+                return res.status(401).json({ error: signInError?.message || 'Invalid email or password' });
             }
 
-            const isValid = User.validatePassword(password, user.password);
-            if (!isValid) {
-                return res.status(401).json({ error: 'Invalid email or password' });
+            const authUser = signInData.user;
+            const token = signInData.session.access_token;
+
+            let user = await User.findById(authUser.id);
+            if (!user) {
+                // If user existed in Supabase auth but not in our profile table, create a minimal row.
+                user = await User.create({
+                    id: authUser.id,
+                    name: authUser.user_metadata?.name || authUser.email || 'User',
+                    email: authUser.email,
+                    password: null,
+                    profession: authUser.user_metadata?.profession || null,
+                    businessName: authUser.user_metadata?.businessName || null,
+                    businessPhone: authUser.user_metadata?.businessPhone || null,
+                    location: authUser.user_metadata?.location || null,
+                    services: authUser.user_metadata?.services || null,
+                    website: authUser.user_metadata?.website || null
+                });
             }
 
             const tenant = await getOrCreateTenantForUser(user, {
@@ -152,15 +176,6 @@ class AuthController {
                 industry: user.profession,
                 whatsapp_number: user.businessPhone
             });
-
-            const token = jwt.sign(
-                {
-                    id: user.id,
-                    tenantId: tenant.id
-                },
-                SECRET,
-                { expiresIn: '7d' }
-            );
 
             res.cookie('auth_token', token, getAuthCookieOptions(req));
 
@@ -190,12 +205,19 @@ class AuthController {
                 return res.status(400).json({ error: 'Invalid email format' });
             }
 
-            const token = createResetToken(normalizedEmail);
-            const user = await User.findByEmail(normalizedEmail);
+            const baseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+            const redirectTo = `${baseUrl}/reset`;
+
+            const { error } = await supabasePublic.auth.resetPasswordForEmail(normalizedEmail, {
+                redirectTo
+            });
+
+            if (error) {
+                return res.status(500).json({ error: error.message || 'Failed to start password reset' });
+            }
 
             return res.json({
-                message: 'If an account exists for this email, a reset link has been generated.',
-                resetLink: user ? `/reset?token=${token}` : null
+                message: 'If an account exists for this email, a reset email has been sent.'
             });
         } catch (err) {
             console.error('Forgot password error:', err);
@@ -205,9 +227,9 @@ class AuthController {
 
     static async resetPassword(req, res) {
         try {
-            const { token, newPassword } = req.body;
-            if (!token || !newPassword) {
-                return res.status(400).json({ error: 'Token and new password are required' });
+            const { accessToken, newPassword } = req.body;
+            if (!accessToken || !newPassword) {
+                return res.status(400).json({ error: 'accessToken and newPassword are required' });
             }
 
             if (!isStrongPassword(newPassword)) {
@@ -216,20 +238,24 @@ class AuthController {
                 });
             }
 
-            let decoded;
-            try {
-                decoded = parseResetToken(token);
-            } catch (tokenError) {
-                return res.status(400).json({ error: 'Invalid or expired reset token' });
-            }
+            // Use a short-lived Supabase recovery access token to update the user password.
+            const scopedClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
+                auth: {
+                    persistSession: false,
+                    autoRefreshToken: false,
+                    detectSessionInUrl: false
+                },
+                global: {
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`
+                    }
+                }
+            });
 
-            const user = await User.findByEmail(decoded.email);
-            if (!user) {
-                return res.status(400).json({ error: 'Invalid or expired reset token' });
+            const { data, error } = await scopedClient.auth.updateUser({ password: newPassword });
+            if (error || !data?.user) {
+                return res.status(400).json({ error: error?.message || 'Invalid or expired reset token' });
             }
-
-            const hashedPassword = User.hashPassword(newPassword);
-            await User.update(user.id, { password: hashedPassword });
 
             return res.json({ message: 'Password reset successful' });
         } catch (err) {

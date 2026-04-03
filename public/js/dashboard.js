@@ -1,6 +1,6 @@
 
 const state = {
-    token: localStorage.getItem('token'),
+    token: null,
     activeModule: 'dashboard',
     channelsOAuthListenerBound: false,
     autoReplyPromptOpen: false,
@@ -1896,9 +1896,6 @@ async function renderPostsModule() {
 
             const response = await fetch(`${window.location.origin}/api/posts/media`, {
                 method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${state.token}`
-                },
                 body: form
             });
 
@@ -3297,13 +3294,13 @@ async function renderSettingsModule() {
 }
 
 async function initDashboard() {
-    if (!state.token) {
+    bindGlobalEvents();
+    try {
+        await loadProfileHeader();
+    } catch (error) {
         window.location = '/login';
         return;
     }
-
-    bindGlobalEvents();
-    await loadProfileHeader();
     await loadLogoState();
     await switchModule(state.activeModule);
     await openAutoReplySetupPrompt();

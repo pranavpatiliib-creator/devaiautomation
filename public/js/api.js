@@ -94,7 +94,7 @@ class API {
     static resetPassword(token, newPassword) {
         return this.request('/api/reset-password', {
             method: 'POST',
-            body: { token, newPassword }
+            body: { accessToken: token, newPassword }
         });
     }
 

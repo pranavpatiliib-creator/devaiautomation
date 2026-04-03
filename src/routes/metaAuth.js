@@ -9,6 +9,10 @@ const { encryptSecret } = require('../utils/secretCrypto');
 
 const router = express.Router();
 
+if (!SECRET) {
+    throw new Error('Missing JWT_SECRET in environment (required for Meta OAuth state signing)');
+}
+
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v19.0';
 const META_APP_ID = process.env.META_APP_ID;
 const META_APP_SECRET = process.env.META_APP_SECRET;

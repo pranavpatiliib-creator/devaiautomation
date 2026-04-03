@@ -1,6 +1,7 @@
 const dns = require('dns');
 const express = require('express');
 const compression = require('compression');
+const helmet = require('helmet');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
@@ -25,8 +26,10 @@ try {
 } catch (_) { }
 
 const supabase = require('./src/config/supabase');
+const apiRateLimiter = require('./src/middleware/rateLimiter');
 
 const app = express();
+app.disable('x-powered-by');
 
 function formatSupabaseStartupError(error) {
     const parts = [];
@@ -85,6 +88,12 @@ app.set('trust proxy', resolveTrustProxySetting(process.env.TRUST_PROXY));
 // Compress text-based responses (HTML/JSON/CSS/JS) to reduce transfer time.
 app.use(compression());
 
+// Security headers. CSP is disabled because the app serves inline scripts/styles in some views.
+app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
+}));
+
 const allowedOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map((item) => item.trim())
@@ -98,7 +107,33 @@ app.use(cors({
     },
     credentials: true
 }));
+
+// Basic CSRF hardening for cookie-based auth: require same-origin Origin/Referer on unsafe methods.
+app.use((req, res, next) => {
+    const method = String(req.method || 'GET').toUpperCase();
+    const isUnsafe = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+    if (!isUnsafe) return next();
+
+    const hasAuthCookie = String(req.headers.cookie || '').includes('auth_token=');
+    const hasBearer = String(req.headers.authorization || '').toLowerCase().startsWith('bearer ');
+    if (!hasAuthCookie || hasBearer) return next();
+
+    const origin = String(req.headers.origin || '').trim();
+    const referer = String(req.headers.referer || '').trim();
+    const host = `${req.protocol}://${req.get('host')}`;
+
+    const ok = (!origin || origin.startsWith(host)) && (!referer || referer.startsWith(host));
+    if (!ok) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    return next();
+});
+
 app.use(express.json({ limit: '1mb' }));
+
+// Generic API rate limiting (auth endpoints have their own limiter too).
+app.use('/api', apiRateLimiter);
 
 // Serve static files BEFORE routes - critical for CSS/JS loading
 app.use(express.static(path.join(__dirname, 'public'), {
