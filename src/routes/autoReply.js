@@ -4,11 +4,14 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const { verifyToken } = require('../middleware/auth');
 const { requireTenant } = require('../middleware/tenant');
+const { cacheGet, bustOnWrite } = require('../middleware/redisCache');
 const rateLimiter = require('../middleware/rateLimiter');
 const { asBoolean, asInt, asTrimmedString, requireFields } = require('../utils/validation');
 const autoReplyService = require('../services/autoReplyService');
 
 router.use(verifyToken, requireTenant);
+router.use(bustOnWrite());
+router.use(cacheGet({ prefix: 'cache:http:autoReply:v1' }));
 
 function isMissingTableError(error) {
     return error?.code === 'PGRST205';
@@ -171,4 +174,3 @@ router.get('/auto-reply/jobs', async (req, res) => {
 });
 
 module.exports = router;
-

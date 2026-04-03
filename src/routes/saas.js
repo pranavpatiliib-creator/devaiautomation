@@ -10,9 +10,13 @@ const { requireTenant } = require('../middleware/tenant');
 const { connectionReadLimiter, connectionWriteLimiter } = require('../middleware/rateLimiter');
 const { encryptSecret, decryptSecret, maskSecret } = require('../utils/secretCrypto');
 const { generateFlyerAndSave } = require('../services/flyerService');
+const { getActiveConnection, fetchMetaTokenPermissions } = require('../services/metaChannelService');
 const logger = require('../utils/appLogger');
+const { cacheGet, bustOnWrite } = require('../middleware/redisCache');
 
 router.use(verifyToken, requireTenant);
+router.use(bustOnWrite());
+router.use(cacheGet({ prefix: 'cache:http:saas:v1' }));
 
 function toNumber(value, fallback = 0) {
     const num = Number(value);
@@ -2074,6 +2078,44 @@ router.get('/channel-connections', connectionReadLimiter, async (req, res) => {
         return res.json((data || []).map(mapConnectionRow));
     } catch (error) {
         return safeJsonError(res, error, 'Failed to load channel connections');
+    }
+});
+
+router.get('/meta/permissions', connectionReadLimiter, async (req, res) => {
+    try {
+        const channel = String(req.query.channel || 'facebook').trim().toLowerCase();
+        if (!['facebook', 'instagram', 'whatsapp'].includes(channel)) {
+            return res.status(400).json({ error: 'Invalid channel. Use facebook, instagram, or whatsapp.' });
+        }
+
+        const connection = await getActiveConnection(req.tenantId, channel);
+        const permissions = await fetchMetaTokenPermissions(connection.decrypted_access_token);
+
+        const requiredMap = {
+            facebook: ['pages_read_engagement', 'pages_manage_posts'],
+            instagram: ['instagram_content_publish'],
+            whatsapp: []
+        };
+
+        const required = requiredMap[channel] || [];
+        const granted = permissions.scopes || [];
+        const missing = required.filter((scope) => !granted.includes(scope));
+
+        return res.json({
+            channel,
+            page_id: connection.page_id,
+            token: {
+                is_valid: permissions.is_valid,
+                app_id: permissions.app_id,
+                user_id: permissions.user_id,
+                expires_at: permissions.expires_at
+            },
+            granted,
+            required,
+            missing
+        });
+    } catch (error) {
+        return safeJsonError(res, error, 'Failed to inspect Meta token permissions');
     }
 });
 

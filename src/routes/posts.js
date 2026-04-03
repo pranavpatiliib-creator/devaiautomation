@@ -4,6 +4,7 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const { verifyToken } = require('../middleware/auth');
 const { requireTenant } = require('../middleware/tenant');
+const { cacheGet, bustOnWrite } = require('../middleware/redisCache');
 const rateLimiter = require('../middleware/rateLimiter');
 const { asTrimmedString, asNullableIsoDate, asInt, requireFields } = require('../utils/validation');
 const logger = require('../utils/appLogger');
@@ -14,6 +15,8 @@ const fs = require('fs/promises');
 const crypto = require('crypto');
 
 router.use(verifyToken, requireTenant);
+router.use(bustOnWrite());
+router.use(cacheGet({ prefix: 'cache:http:posts:v1' }));
 // This route file defines endpoints for managing social media posts, including creating, updating, deleting, and scheduling posts. It also includes an endpoint for retrieving post attempts. The routes validate input data, handle database interactions with Supabase, and implement error handling for various scenarios, such as missing fields or database errors. The endpoints are protected with authentication and tenant resolution middleware to ensure that only authorized users can access and modify their own posts.
 function isMissingTableError(error) {
     return error?.code === 'PGRST205';

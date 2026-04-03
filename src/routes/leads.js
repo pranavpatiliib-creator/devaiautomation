@@ -6,6 +6,7 @@ const PDFDocument = require('pdfkit');
 const supabase = require('../config/supabase');
 const { verifyToken } = require('../middleware/auth');
 const { requireTenant } = require('../middleware/tenant');
+const { cacheGet, bustOnWrite } = require('../middleware/redisCache');
 
 function normalizeStatus(value) {
     return String(value || '').trim().toLowerCase();
@@ -174,6 +175,8 @@ async function getLeadById(tenantId, leadId) {
 }
 
 router.use(verifyToken, requireTenant);
+router.use(bustOnWrite());
+router.use(cacheGet({ prefix: 'cache:http:leads:v1' }));
 
 router.get('/leads', async (req, res) => {
     try {

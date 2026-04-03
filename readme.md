@@ -21,6 +21,11 @@ server.js (300 LOC) → Main app
 └── Vercel handler: api/index.js (exports app)
 ```
 
+### Optional: Redis Response Cache (faster repeat loads)
+- Enabled via env: `REDIS_CACHE_ENABLED=true`
+- Caches authenticated `GET` JSON responses per-tenant with TTL (`REDIS_CACHE_TTL_SECONDS`, default 30s)
+- Automatically busts the tenant cache version after successful `POST/PUT/PATCH/DELETE`
+
 ### Database: Supabase PostgreSQL (Full Schema Below)
 - **Multi-tenant**: `tenants.id` FK on ALL business data
 - **RLS-ready**: Service role key bypasses client policies

@@ -2,6 +2,8 @@ const supabase = require('../config/supabase');
 const { decryptSecret } = require('../utils/secretCrypto');
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v19.0';
+const META_APP_ID = process.env.META_APP_ID;
+const META_APP_SECRET = process.env.META_APP_SECRET;
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
 
 function buildGraphUrl(path, params) {
@@ -150,10 +152,32 @@ async function sendWhatsAppTextMessage({ tenantId, recipientId, text }) {
     };
 }
 
+async function fetchMetaTokenPermissions(accessToken) {
+    if (!META_APP_ID || !META_APP_SECRET) {
+        throw new Error('Missing META_APP_ID or META_APP_SECRET for token inspection');
+    }
+    const appToken = `${META_APP_ID}|${META_APP_SECRET}`;
+    const debug = await fetchJson(buildGraphUrl('/debug_token', {
+        input_token: accessToken,
+        access_token: appToken
+    }));
+    const data = debug?.data || {};
+    const scopes = Array.isArray(data.scopes) ? data.scopes : [];
+
+    return {
+        is_valid: Boolean(data.is_valid),
+        app_id: data.app_id || null,
+        user_id: data.user_id || null,
+        expires_at: data.expires_at || null,
+        scopes
+    };
+}
+
 module.exports = {
     getActiveConnection,
     sendMetaTextMessage,
     sendWhatsAppTextMessage,
     publishFacebookPost,
-    publishInstagramPost
+    publishInstagramPost,
+    fetchMetaTokenPermissions
 };
