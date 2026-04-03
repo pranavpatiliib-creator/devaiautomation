@@ -571,28 +571,11 @@ async function getSalesTotalBetween(tenantId, startIso, endIso) {
 
 router.get('/me', async (req, res) => {
     try {
-        let { data: user, error } = await supabase
-            .from('users')
-            .select('id,name,email,profession,business_name,business_phone,location,services,website')
-            .eq('id', req.user.id)
-            .maybeSingle();
-
-        if (error && isMissingColumnError(error)) {
-            ({ data: user, error } = await supabase
-                .from('users')
-                .select('id,name,email,profession,business_name,business_phone,location')
-                .eq('id', req.user.id)
-                .maybeSingle());
-            if (!error && user) {
-                user.services = null;
-                user.website = null;
-            }
-        }
-
-        if (error) throw error;
-
         return res.json({
-            user,
+            user: {
+                id: req.user.id,
+                email: req.user.email || null
+            },
             tenant: {
                 id: req.tenant.id,
                 business_name: req.tenant.business_name,
@@ -1629,12 +1612,6 @@ router.get('/bills/:id', async (req, res) => {
 
 router.get('/bills/:id/pdf', async (req, res) => {
     try {
-        const { data: user } = await supabase
-            .from('users')
-            .select('location')
-            .eq('id', req.user.id)
-            .maybeSingle();
-
         const { data: bill, error } = await supabase
             .from('bills')
             .select('*')
@@ -1665,7 +1642,7 @@ router.get('/bills/:id/pdf', async (req, res) => {
         renderBillPdf(doc, {
             tenant: {
                 ...req.tenant,
-                location: user?.location || null
+                location: req.tenant?.location || null
             },
             bill
         });
@@ -2309,28 +2286,11 @@ router.delete('/channel-connections/:id', connectionWriteLimiter, async (req, re
 
 router.get('/settings/profile', async (req, res) => {
     try {
-        let { data: user, error } = await supabase
-            .from('users')
-            .select('id,name,email,profession,business_name,business_phone,location,services,website')
-            .eq('id', req.user.id)
-            .maybeSingle();
-
-        if (error && isMissingColumnError(error)) {
-            ({ data: user, error } = await supabase
-                .from('users')
-                .select('id,name,email,profession,business_name,business_phone,location')
-                .eq('id', req.user.id)
-                .maybeSingle());
-            if (!error && user) {
-                user.services = null;
-                user.website = null;
-            }
-        }
-
-        if (error) throw error;
-
         return res.json({
-            user,
+            user: {
+                id: req.user.id,
+                email: req.user.email || null
+            },
             tenant: {
                 id: req.tenant.id,
                 business_name: req.tenant.business_name,
@@ -2338,7 +2298,14 @@ router.get('/settings/profile', async (req, res) => {
                 whatsapp_number: req.tenant.whatsapp_number,
                 fb_page_id: req.tenant.fb_page_id,
                 instagram_id: req.tenant.instagram_id,
-                business_logo: req.tenant.business_logo || null
+                business_logo: req.tenant.business_logo || null,
+                // Unified profile fields (now stored on tenants table).
+                name: req.tenant.name || null,
+                profession: req.tenant.profession || null,
+                business_phone: req.tenant.business_phone || null,
+                location: req.tenant.location || null,
+                services: req.tenant.services || null,
+                website: req.tenant.website || null
             }
         });
     } catch (error) {
@@ -2348,21 +2315,19 @@ router.get('/settings/profile', async (req, res) => {
 
 router.put('/settings/profile', async (req, res) => {
     try {
-        const userUpdates = {};
         const tenantUpdates = {};
 
-        if (req.body.name !== undefined) userUpdates.name = req.body.name;
-        if (req.body.profession !== undefined) userUpdates.profession = req.body.profession;
-        if (req.body.location !== undefined) userUpdates.location = req.body.location;
+        if (req.body.name !== undefined) tenantUpdates.name = req.body.name;
+        if (req.body.profession !== undefined) tenantUpdates.profession = req.body.profession;
+        if (req.body.location !== undefined) tenantUpdates.location = req.body.location;
         if (req.body.business_name !== undefined || req.body.businessName !== undefined) {
-            userUpdates.business_name = req.body.business_name || req.body.businessName;
             tenantUpdates.business_name = req.body.business_name || req.body.businessName;
         }
         if (req.body.business_phone !== undefined || req.body.businessPhone !== undefined) {
-            userUpdates.business_phone = req.body.business_phone || req.body.businessPhone;
+            tenantUpdates.business_phone = req.body.business_phone || req.body.businessPhone;
         }
-        if (req.body.services !== undefined) userUpdates.services = req.body.services;
-        if (req.body.website !== undefined) userUpdates.website = req.body.website;
+        if (req.body.services !== undefined) tenantUpdates.services = req.body.services;
+        if (req.body.website !== undefined) tenantUpdates.website = req.body.website;
 
         if (req.body.industry !== undefined) tenantUpdates.industry = req.body.industry;
         if (req.body.whatsapp_number !== undefined || req.body.whatsappNumber !== undefined) {
@@ -2378,31 +2343,11 @@ router.put('/settings/profile', async (req, res) => {
             tenantUpdates.business_logo = req.body.business_logo || req.body.businessLogo || null;
         }
 
-        if (Object.keys(userUpdates).length > 0) {
-            let { error: userError } = await supabase
-                .from('users')
-                .update(userUpdates)
-                .eq('id', req.user.id);
-
-            if (userError && isMissingColumnError(userError)) {
-                const fallbackUserUpdates = { ...userUpdates };
-                delete fallbackUserUpdates.services;
-                delete fallbackUserUpdates.website;
-                ({ error: userError } = await supabase
-                    .from('users')
-                    .update(fallbackUserUpdates)
-                    .eq('id', req.user.id));
-            }
-
-            if (userError) throw userError;
-        }
-
         if (Object.keys(tenantUpdates).length > 0) {
             const { error: tenantError } = await supabase
                 .from('tenants')
                 .update(tenantUpdates)
-                .eq('id', req.tenantId)
-                .eq('user_id', req.user.id);
+                .eq('id', req.tenantId);
 
             if (tenantError) throw tenantError;
         }

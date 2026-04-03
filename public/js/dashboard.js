@@ -543,7 +543,8 @@ async function authedRequest(endpoint, options = {}) {
         });
     } catch (error) {
         const message = String(error?.message || '').toLowerCase();
-        if (message.includes('token') || message.includes('access denied')) {
+        const status = Number(error?.status || 0);
+        if (status === 401 || status === 403 || message.includes('access denied') || message.includes('invalid token')) {
             showToast('Session expired. Please login again.', 'error');
             setTimeout(() => logout(), 350);
         }
@@ -3298,7 +3299,12 @@ async function initDashboard() {
     try {
         await loadProfileHeader();
     } catch (error) {
-        window.location = '/login';
+        const status = Number(error?.status || 0);
+        if (status === 401 || status === 403) {
+            window.location = '/login';
+            return;
+        }
+        showToast(error?.message || 'Failed to load dashboard. Please retry.', 'error');
         return;
     }
     await loadLogoState();

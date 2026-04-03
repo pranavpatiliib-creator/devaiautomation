@@ -1,4 +1,3 @@
-const User = require('../models/User');
 const { getOrCreateTenantForUser } = require('../services/tenantService');
 const supabase = require('../config/supabase');
 const supabasePublic = require('../config/supabasePublic');
@@ -24,6 +23,7 @@ function getAuthCookieOptions(req) {
         maxAge: 7 * 24 * 60 * 60 * 1000
     };
 }
+
 // Controller class for handling authentication-related routes, including signup, login, forgot password, and reset password. It interacts with the User model and tenant service to manage user accounts and their associated tenant contexts.
 class AuthController {
     static async signup(req, res) {
@@ -100,22 +100,17 @@ class AuthController {
                 return res.status(500).json({ error: 'Signup failed (missing Supabase user)' });
             }
 
-            // Create/ensure profile row in app users table (no password stored).
-            let newUser = await User.findById(authUser.id);
-            if (!newUser) {
-                newUser = await User.create({
-                    id: authUser.id,
-                    name,
-                    email: normalizedEmail,
-                    password: null,
-                    profession,
-                    businessName,
-                    businessPhone,
-                    location,
-                    services,
-                    website
-                });
-            }
+            const newUser = {
+                id: authUser.id,
+                name,
+                email: normalizedEmail,
+                profession,
+                businessName,
+                businessPhone,
+                location,
+                services,
+                website
+            };
 
             const tenant = await getOrCreateTenantForUser(newUser, {
                 business_name: businessName,
@@ -154,22 +149,17 @@ class AuthController {
             const authUser = signInData.user;
             const token = signInData.session.access_token;
 
-            let user = await User.findById(authUser.id);
-            if (!user) {
-                // If user existed in Supabase auth but not in our profile table, create a minimal row.
-                user = await User.create({
-                    id: authUser.id,
-                    name: authUser.user_metadata?.name || authUser.email || 'User',
-                    email: authUser.email,
-                    password: null,
-                    profession: authUser.user_metadata?.profession || null,
-                    businessName: authUser.user_metadata?.businessName || null,
-                    businessPhone: authUser.user_metadata?.businessPhone || null,
-                    location: authUser.user_metadata?.location || null,
-                    services: authUser.user_metadata?.services || null,
-                    website: authUser.user_metadata?.website || null
-                });
-            }
+            const user = {
+                id: authUser.id,
+                name: authUser.user_metadata?.name || authUser.email || 'User',
+                email: authUser.email,
+                profession: authUser.user_metadata?.profession || null,
+                businessName: authUser.user_metadata?.businessName || null,
+                businessPhone: authUser.user_metadata?.businessPhone || null,
+                location: authUser.user_metadata?.location || null,
+                services: authUser.user_metadata?.services || null,
+                website: authUser.user_metadata?.website || null
+            };
 
             const tenant = await getOrCreateTenantForUser(user, {
                 business_name: user.businessName,
@@ -213,7 +203,11 @@ class AuthController {
             });
 
             if (error) {
-                return res.status(500).json({ error: error.message || 'Failed to start password reset' });
+                const message = error.message || 'Failed to start password reset';
+                if (/rate limit/i.test(message) || /too many/i.test(message)) {
+                    return res.status(429).json({ error: 'Too many reset attempts. Please wait and try again.' });
+                }
+                return res.status(500).json({ error: message });
             }
 
             return res.json({

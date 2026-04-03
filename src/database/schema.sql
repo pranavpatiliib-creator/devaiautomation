@@ -5,9 +5,11 @@
 create extension if not exists "uuid-ossp";
 
 -------------------------------------------------------
--- USERS (Platform Users)
+-- USERS (Platform Users) [Legacy]
 -------------------------------------------------------
 
+-- NOTE: When using Supabase Auth, prefer storing profile fields on `tenants` and linking via `tenants.user_id = auth.uid()`.
+-- The `users` table is kept for backward compatibility but should not be used as the source of truth.
 create table if not exists users (
  id uuid primary key default uuid_generate_v4(),
  name text not null,
@@ -27,7 +29,14 @@ create table if not exists users (
 create table if not exists tenants (
  id uuid primary key default uuid_generate_v4(),
  user_id uuid references users(id) on delete cascade,
+ name text,
+ email text,
+ profession text,
  business_name text not null,
+ business_phone text,
+ services text,
+ website text,
+ location text,
  industry text,
  whatsapp_number text,
  fb_page_id text,
@@ -37,6 +46,7 @@ create table if not exists tenants (
 );
 
 create index if not exists tenants_user_idx on tenants(user_id);
+create unique index if not exists tenants_user_unique_idx on tenants(user_id);
 
 ----------------------------------------------------------------------------------------------------------------------------------------
 -- CHANNEL CONNECTIONS

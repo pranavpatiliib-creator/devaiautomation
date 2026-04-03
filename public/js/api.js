@@ -44,7 +44,9 @@ class API {
                 }
             }
 
-            throw new Error(errorPayload.error || errorPayload.message || `Request failed (${response.status})`);
+            const err = new Error(errorPayload.error || errorPayload.message || `Request failed (${response.status})`);
+            err.status = response.status;
+            throw err;
         }
 
         if (contentType.includes('application/json')) {
@@ -61,7 +63,9 @@ class API {
         });
 
         if (!response.ok) {
-            throw new Error(`Download failed (${response.status})`);
+            const err = new Error(`Download failed (${response.status})`);
+            err.status = response.status;
+            throw err;
         }
 
         return response.blob();

@@ -26,7 +26,7 @@ try {
 } catch (_) { }
 
 const supabase = require('./src/config/supabase');
-const apiRateLimiter = require('./src/middleware/rateLimiter');
+const { apiLimiter } = require('./src/middleware/rateLimiter');
 
 const app = express();
 app.disable('x-powered-by');
@@ -133,7 +133,7 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '1mb' }));
 
 // Generic API rate limiting (auth endpoints have their own limiter too).
-app.use('/api', apiRateLimiter);
+app.use('/api', apiLimiter);
 
 // Serve static files BEFORE routes - critical for CSS/JS loading
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -251,7 +251,7 @@ async function logSupabaseConnectionStatus() {
 
     try {
         const { error, status, statusText } = await supabase
-            .from('users')
+            .from('tenants')
             .select('id')
             .limit(1);
 

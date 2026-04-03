@@ -35,6 +35,14 @@ function verifyToken(req, res, next) {
             next();
         })
         .catch((err) => {
+            const code = err?.cause?.code || err?.code;
+            const message = String(err?.message || '');
+            // Treat transient connectivity problems as 503 (so clients can retry) instead of "invalid token".
+            if (code === 'UND_ERR_CONNECT_TIMEOUT' || /timeout/i.test(message) || /fetch failed/i.test(message)) {
+                console.warn('Supabase token verification unavailable (network timeout).');
+                return res.status(503).json({ error: 'Auth service temporarily unavailable. Please retry.' });
+            }
+
             console.warn('Supabase token verification failed:', err?.message || err);
             res.status(401).json({ error: 'Invalid token' });
         });

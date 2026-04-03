@@ -1,4 +1,5 @@
 const rateLimit = require('express-rate-limit');
+const ipKeyGenerator = typeof rateLimit.ipKeyGenerator === 'function' ? rateLimit.ipKeyGenerator : null;
 
 function createLimiter({ windowMs, max, message }) {
     return rateLimit({
@@ -10,10 +11,38 @@ function createLimiter({ windowMs, max, message }) {
     });
 }
 
+function createEmailLimiter({ windowMs, max, message }) {
+    return rateLimit({
+        windowMs,
+        max,
+        standardHeaders: true,
+        legacyHeaders: false,
+        message,
+        keyGenerator(req) {
+            const ip = ipKeyGenerator ? ipKeyGenerator(req) : (req.ip || 'unknown');
+            const email = String(req.body?.email || '').trim().toLowerCase();
+            // Combine IP + email to prevent both targeted and spray abuse.
+            return `${ip}:${email || 'no-email'}`;
+        }
+    });
+}
+
 const limiter = createLimiter({
     windowMs: 15 * 60 * 1000,
     max: 20,
     message: 'Too many requests. Please try again later.'
+});
+
+const apiLimiter = createLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: Number(process.env.API_RATE_LIMIT_MAX) || 300,
+    message: 'Too many requests. Please slow down and try again.'
+});
+
+const authEmailLimiter = createEmailLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: 'Too many email requests. Please wait before trying again.'
 });
 
 const connectionReadLimiter = createLimiter({
@@ -47,6 +76,8 @@ const webhookInboundLimiter = createLimiter({
 });
 
 module.exports = limiter;
+module.exports.apiLimiter = apiLimiter;
+module.exports.authEmailLimiter = authEmailLimiter;
 module.exports.connectionReadLimiter = connectionReadLimiter;
 module.exports.connectionWriteLimiter = connectionWriteLimiter;
 module.exports.oauthStartLimiter = oauthStartLimiter;
